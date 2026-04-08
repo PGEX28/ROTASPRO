@@ -1,0 +1,916 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0F0D0C">
+  <link rel="manifest" href="/manifest.json">
+  <link rel="icon" type="image/png" href="/logo-app.png">
+  <link rel="apple-touch-icon" href="/icon-192x192.png">
+  <title>Rotas</title>
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@700;800&family=DM+Sans:wght@400;500&display=swap"
+    rel="stylesheet">
+  <style>
+    :root {
+      --orange: #F03A17;
+      --orange-light: #FF5533;
+      --orange-dark: #C02D10;
+      --orange-glow: rgba(240, 58, 23, 0.25);
+      --bg: #0F0D0C;
+      --surface: #1A1714;
+      --surface2: #231F1C;
+      --border: rgba(240, 58, 23, 0.18);
+      --text: #F5F0ED;
+      --text-muted: #8A7F7A;
+      --green: #22C55E;
+      --green-glow: rgba(34, 197, 94, 0.2);
+    }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+    html,
+    body {
+      height: 100%;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', sans-serif;
+      overflow-x: hidden;
+    }
+    body::before {
+      content: '';
+      position: fixed;
+      inset: 0;
+      background:
+        radial-gradient(ellipse 70% 35% at 15% 5%, rgba(240, 58, 23, 0.1) 0%, transparent 65%),
+        radial-gradient(ellipse 50% 50% at 85% 90%, rgba(240, 58, 23, 0.06) 0%, transparent 65%);
+      pointer-events: none;
+      z-index: 0;
+    }
+    header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 20px 20px 0;
+      position: relative;
+      z-index: 10;
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .logo-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 11px;
+      box-shadow: 0 0 18px var(--orange-glow);
+      flex-shrink: 0;
+      object-fit: cover;
+    }
+    .logo-text {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 20px;
+      letter-spacing: -0.5px;
+    }
+    .logo-text span {
+      color: var(--orange);
+    }
+    .badge-offline {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 5px 12px;
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 500;
+    }
+    .badge-offline::before {
+      content: '';
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--orange);
+      box-shadow: 0 0 5px var(--orange);
+      flex-shrink: 0;
+    }
+    main {
+      padding: 32px 20px 100px;
+      position: relative;
+      z-index: 10;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .hero-tag {
+      background: rgba(240, 58, 23, 0.12);
+      border: 1px solid rgba(240, 58, 23, 0.3);
+      border-radius: 20px;
+      padding: 4px 14px;
+      font-size: 11px;
+      color: var(--orange-light);
+      font-weight: 500;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+    }
+    h1 {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 30px;
+      line-height: 1.1;
+      text-align: center;
+      letter-spacing: -1px;
+      margin-bottom: 10px;
+    }
+    h1 em {
+      font-style: normal;
+      color: var(--orange);
+    }
+    .subtitle {
+      color: var(--text-muted);
+      font-size: 14px;
+      text-align: center;
+      line-height: 1.6;
+      margin-bottom: 32px;
+      max-width: 280px;
+    }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 24px 20px;
+      width: 100%;
+      max-width: 480px;
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 2px;
+      background: linear-gradient(90deg, transparent, var(--orange), transparent);
+    }
+    /* ── UPLOAD SCREEN ── */
+    #upload-screen {
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    .file-picker-btn {
+      width: 100%;
+      background: var(--surface2);
+      border: 1.5px dashed rgba(240, 58, 23, 0.4);
+      border-radius: 14px;
+      padding: 20px 16px;
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+      overflow: hidden;
+    }
+    .file-picker-btn:active {
+      background: rgba(240, 58, 23, 0.08);
+      border-color: var(--orange);
+      transform: scale(0.98);
+    }
+    .file-picker-btn input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      font-size: 0;
+    }
+    .picker-icon {
+      width: 46px;
+      height: 46px;
+      border-radius: 12px;
+      background: rgba(240, 58, 23, 0.12);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 22px;
+      flex-shrink: 0;
+    }
+    .picker-label {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 14px;
+      color: var(--text);
+    }
+    .picker-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .file-chosen {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: rgba(240, 58, 23, 0.07);
+      border: 1px solid rgba(240, 58, 23, 0.3);
+      border-radius: 12px;
+      padding: 14px 16px;
+    }
+    .file-chosen-icon {
+      font-size: 28px;
+    }
+    .file-chosen-info {
+      flex: 1;
+      min-width: 0;
+    }
+    .file-chosen-name {
+      font-size: 14px;
+      font-weight: 500;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .file-chosen-size {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .btn-remove-file {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 6px;
+      flex-shrink: 0;
+    }
+    .btn-primary {
+      width: 100%;
+      background: var(--orange);
+      border: none;
+      border-radius: 14px;
+      padding: 18px;
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+      box-shadow: 0 4px 24px rgba(240, 58, 23, 0.4);
+    }
+    .btn-primary:active {
+      transform: scale(0.97);
+      box-shadow: 0 2px 12px rgba(240, 58, 23, 0.3);
+    }
+    /* ── PROCESSING SCREEN ── */
+    #processing-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 24px;
+      padding: 10px 0;
+    }
+    .spinner-wrap {
+      position: relative;
+      width: 72px;
+      height: 72px;
+      margin-top: 8px;
+    }
+    .spinner {
+      width: 72px;
+      height: 72px;
+      border-radius: 50%;
+      border: 3px solid rgba(240, 58, 23, 0.12);
+      border-top-color: var(--orange);
+      animation: spin 0.85s linear infinite;
+    }
+    .spinner-inner {
+      position: absolute;
+      inset: 12px;
+      border-radius: 50%;
+      border: 2px solid rgba(240, 58, 23, 0.08);
+      border-bottom-color: var(--orange-light);
+      animation: spin 0.55s linear infinite reverse;
+    }
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+    .processing-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 18px;
+      text-align: center;
+    }
+    .progress-bar-wrap {
+      width: 100%;
+      background: var(--surface2);
+      border-radius: 8px;
+      height: 6px;
+      overflow: hidden;
+    }
+    .progress-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--orange-dark), var(--orange-light));
+      border-radius: 8px;
+      width: 0%;
+      transition: width 0.3s ease;
+      box-shadow: 0 0 8px var(--orange-glow);
+    }
+    .progress-header {
+      width: 100%;
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .progress-lbl {
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+    #progress-pct {
+      font-size: 11px;
+      color: var(--orange);
+    }
+    .progress-steps {
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .step-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-size: 13px;
+      color: var(--text-muted);
+      transition: color 0.3s;
+    }
+    .step-item.active { color: var(--text); }
+    .step-item.done   { color: var(--green); }
+    .step-dot {
+      width: 22px;
+      height: 22px;
+      border-radius: 50%;
+      border: 2px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 9px;
+      font-weight: 600;
+      transition: all 0.3s;
+    }
+    .step-item.active .step-dot {
+      border-color: var(--orange);
+      background: rgba(240, 58, 23, 0.15);
+      animation: pulse-dot 1s infinite;
+    }
+    .step-item.done .step-dot {
+      border-color: var(--green);
+      background: rgba(34, 197, 94, 0.12);
+      font-size: 11px;
+    }
+    @keyframes pulse-dot {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(240, 58, 23, 0.4); }
+      50%       { box-shadow: 0 0 0 5px rgba(240, 58, 23, 0); }
+    }
+    /* ── SUCCESS SCREEN ── */
+    #success-screen {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      gap: 18px;
+      padding: 8px 0;
+      text-align: center;
+      animation: fadeUp 0.5s ease;
+    }
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+    .success-icon {
+      width: 76px;
+      height: 76px;
+      border-radius: 50%;
+      border: 3px solid var(--green);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 0 28px var(--green-glow);
+      animation: popIn 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+    }
+    @keyframes popIn {
+      from { transform: scale(0); opacity: 0; }
+      to   { transform: scale(1); opacity: 1; }
+    }
+    .success-check {
+      font-size: 34px;
+      color: var(--green);
+      animation: checkIn 0.4s 0.25s both;
+    }
+    @keyframes checkIn {
+      from { opacity: 0; transform: scale(0.4); }
+      to   { opacity: 1; transform: scale(1);   }
+    }
+    .success-title {
+      font-family: 'Syne', sans-serif;
+      font-weight: 800;
+      font-size: 24px;
+      letter-spacing: -0.5px;
+    }
+    .success-sub {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.6;
+      max-width: 280px;
+    }
+    .success-stats {
+      display: flex;
+      gap: 10px;
+      width: 100%;
+    }
+    .stat-box {
+      flex: 1;
+      background: var(--surface2);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 14px 10px;
+      text-align: center;
+    }
+    .stat-num {
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 22px;
+      color: var(--orange);
+    }
+    .stat-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-top: 3px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+    .btn-download {
+      width: 100%;
+      background: var(--green);
+      border: none;
+      border-radius: 14px;
+      padding: 18px;
+      color: #fff;
+      font-family: 'Syne', sans-serif;
+      font-weight: 700;
+      font-size: 16px;
+      cursor: pointer;
+      transition: all 0.15s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 24px rgba(34, 197, 94, 0.35);
+    }
+    .btn-download:active { transform: scale(0.97); }
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      width: 100%;
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+    .divider::before,
+    .divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: rgba(255, 255, 255, 0.06);
+    }
+    .btn-secondary {
+      width: 100%;
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      padding: 16px;
+      color: var(--text-muted);
+      font-family: 'DM Sans', sans-serif;
+      font-weight: 500;
+      font-size: 14px;
+      cursor: pointer;
+    }
+    .features {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px 20px;
+      margin-top: 28px;
+      justify-content: center;
+      max-width: 480px;
+      width: 100%;
+    }
+    .feature {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    /* ── INSTALL BANNER ── */
+    #install-banner {
+      position: fixed;
+      bottom: 16px;
+      left: 16px;
+      right: 16px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      z-index: 100;
+      box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+      animation: slideUp 0.5s 2.5s both;
+    }
+    @keyframes slideUp {
+      from { opacity: 0; transform: translateY(60px); }
+      to   { opacity: 1; transform: translateY(0);    }
+    }
+    .banner-icon {
+      width: 40px;
+      height: 40px;
+      border-radius: 10px;
+      flex-shrink: 0;
+      box-shadow: 0 0 14px var(--orange-glow);
+      object-fit: cover;
+    }
+    .banner-text { flex: 1; min-width: 0; }
+    .banner-title { font-size: 13px; font-weight: 600; }
+    .banner-sub {
+      font-size: 11px;
+      color: var(--text-muted);
+      margin-top: 2px;
+    }
+    .banner-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .btn-install {
+      background: var(--orange);
+      border: none;
+      border-radius: 8px;
+      padding: 9px 16px;
+      color: #fff;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+    .btn-dismiss {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      cursor: pointer;
+      font-size: 18px;
+      padding: 4px;
+      line-height: 1;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="logo">
+      <img src="/logo-app.png" alt="Logo" class="logo-icon">
+      <div class="logo-text">Ro<span>tas</span></div>
+    </div>
+    <div class="badge-offline">Offline</div>
+  </header>
+  <main>
+    <div class="hero-tag">Processador de Planilhas</div>
+    <h1>Processe suas <em>rotas</em> com precisão</h1>
+    <p class="subtitle">Selecione a planilha e configure os parâmetros para processar.</p>
+    <div class="card">
+      <!-- UPLOAD SCREEN -->
+      <div id="upload-screen">
+        <div class="file-picker-btn" id="file-picker-btn">
+          <input type="file" id="file-input" accept=".xlsx,.xls,.csv">
+          <div class="picker-icon">📂</div>
+          <div>
+            <div class="picker-label">Selecionar planilha</div>
+            <div class="picker-sub">.xlsx, .xls, .csv</div>
+          </div>
+        </div>
+        <div class="file-chosen" id="file-chosen">
+          <div class="file-chosen-icon">📊</div>
+          <div class="file-chosen-info">
+            <div class="file-chosen-name" id="file-name">—</div>
+            <div class="file-chosen-size" id="file-size">—</div>
+          </div>
+          <button class="btn-remove-file" id="remove-file">✕</button>
+        </div>
+        <button class="btn-primary" onclick="startProcessing()">Processar Planilha →</button>
+      </div>
+      <!-- PROCESSING SCREEN -->
+      <div id="processing-screen">
+        <div class="spinner-wrap">
+          <div class="spinner"></div>
+          <div class="spinner-inner"></div>
+        </div>
+        <div class="processing-title">Processando sua planilha…</div>
+        <div style="width:100%">
+          <div class="progress-header">
+            <span class="progress-lbl">Progresso</span>
+            <span id="progress-pct">0%</span>
+          </div>
+          <div class="progress-bar-wrap">
+            <div class="progress-bar" id="progress-bar"></div>
+          </div>
+        </div>
+        <div class="progress-steps">
+          <div class="step-item" id="step-1">
+            <div class="step-dot">1</div><span>Lendo arquivo e validando dados</span>
+          </div>
+          <div class="step-item" id="step-2">
+            <div class="step-dot">2</div><span>Calculando distâncias e otimizando rotas</span>
+          </div>
+          <div class="step-item" id="step-3">
+            <div class="step-dot">3</div><span>Gerando planilha de saída</span>
+          </div>
+        </div>
+      </div>
+      <!-- SUCCESS SCREEN -->
+      <div id="success-screen">
+        <div class="success-icon">
+          <div class="success-check">✓</div>
+        </div>
+        <div class="success-title">Processamento Concluído!</div>
+        <div class="success-sub">Sua planilha foi processada com sucesso. Use os botões abaixo para acessá-la.</div>
+        <div class="success-stats">
+          <div class="stat-box">
+            <div class="stat-num" id="stat-rotas">—</div>
+            <div class="stat-label">Paradas</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" id="stat-veiculos">—</div>
+            <div class="stat-label">Pacotes</div>
+          </div>
+          <div class="stat-box">
+            <div class="stat-num" id="stat-sem-ordem">—</div>
+            <div class="stat-label">Sem Ordem</div>
+          </div>
+        </div>
+        <button class="btn-download" onclick="downloadFile()">⬇&nbsp; Baixar Planilha Processada</button>
+        <div class="divider">ou</div>
+        <button class="btn-secondary" onclick="resetApp()">Processar nova planilha</button>
+      </div>
+    </div>
+    <div class="features">
+      <div class="feature">⚡ Rápido</div>
+      <div class="feature">📱 100% mobile</div>
+      <div class="feature">🔒 Dados locais</div>
+      <div class="feature">📊 Exporta Excel</div>
+    </div>
+  </main>
+  <div id="install-banner">
+    <img src="/logo-app.png" alt="Logo" class="banner-icon">
+    <div class="banner-text">
+      <div class="banner-title">Instalar App</div>
+      <div class="banner-sub">Acesse suas rotas offline</div>
+    </div>
+    <div class="banner-actions">
+      <button class="btn-install" onclick="installApp()">Instalar</button>
+      <button class="btn-dismiss" onclick="dismissBanner()">✕</button>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('/sw.js')
+          .then(reg => console.log('Service Worker registrado!', reg))
+          .catch(err => console.error('Erro no Service Worker', err));
+      });
+    }
+    const fileInput = document.getElementById('file-input');
+    const filePicker = document.getElementById('file-picker-btn');
+    const fileChosen = document.getElementById('file-chosen');
+    let selectedFile = null;
+    let processedWB = null;
+    fileInput.addEventListener('change', (e) => { if (e.target.files[0]) handleFile(e.target.files[0]); });
+    function handleFile(file) {
+      selectedFile = file;
+      filePicker.style.display = 'none';
+      fileChosen.style.display = 'flex';
+      document.getElementById('file-name').textContent = file.name;
+      document.getElementById('file-size').textContent = fmtSize(file.size);
+    }
+    document.getElementById('remove-file').onclick = () => {
+      selectedFile = null; processedWB = null;
+      filePicker.style.display = 'flex';
+      fileChosen.style.display = 'none';
+      fileInput.value = '';
+    };
+    function fmtSize(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b / 1024).toFixed(1) + ' KB';
+      return (b / 1048576).toFixed(1) + ' MB';
+    }
+    // ── Transformation logic ──
+    const PREFIX_MAP = [
+      [/^Srv\b/i, 'Servidão'], [/^Av\b/i, 'Avenida'], [/^R\b/i, 'Rua'],
+      [/^Rod\b/i, 'Rodovia'], [/^Est\b/i, 'Estrada'],
+    ];
+    const MIDDLE_EXP = {
+      'Francisco T dos Santos': 'Francisco Thomaz dos Santos',
+      'Antônio B dos Santos': 'Antônio Borges dos Santos',
+      'José P Pires': 'José Paulo Pires',
+      'Jacinto L de Oliveira': 'Jacinto Luiz de Oliveira',
+      'Maria C Ferreira': 'Maria Carolina Ferreira',
+      'Rozália P Ferreira': 'Rozália Paulina Ferreira',
+      'João T de Carvalho': 'João Teixeira de Carvalho',
+      'Felicidade M da Silva': 'Felicidade Maria da Silva',
+      'Izidoro J Pires': 'Izidoro José Pires',
+      'Euclides J Alves': 'Euclides João Alves',
+      'Francisco Thomaz dos santos': 'Francisco Thomaz dos Santos',
+    };
+    const ADDR_CORR = {
+      'Nereu Guizone, 890': 'Servidão Osnildo Leôncio Duarte, 890',
+      'Servidão Gerônimo Luiz Oliveira, 85': 'Rua Gerônimo Luiz Oliveira, 85',
+    };
+    function expandAddress(name) {
+      if (ADDR_CORR[name]) return ADDR_CORR[name];
+      for (const [pat, rep] of PREFIX_MAP) {
+        if (pat.test(name)) { name = name.replace(pat, rep); break; }
+      }
+      for (const [abbr, full] of Object.entries(MIDDLE_EXP)) {
+        if (name.includes(abbr)) name = name.split(abbr).join(full);
+      }
+      return name;
+    }
+    function splitAddr(addr) {
+      const parts = (addr || '').trim().split(', ');
+      return [parts.slice(0, 2).join(', '), parts.length > 2 ? parts.slice(2).join(', ') : null];
+    }
+    function transformRows(rows) {
+      const sequenced   = rows.filter(r => r['Sequence'] !== '-' && r['Sequence'] != null && r['Stop'] !== '-');
+      const unsequenced = rows.filter(r => r['Sequence'] === '-' || r['Stop'] === '-');
+      const maxSeq = Math.max(...sequenced.map(r => Number(r['Sequence'])));
+      // 1) Group sequenced rows by base address
+      const groups = new Map();
+      const order = [];
+      for (const r of sequenced) {
+        const [base] = splitAddr(r['Destination Address']);
+        const key = base;
+        if (!groups.has(key)) {
+          groups.set(key, { rows: [], unseqLabels: [], first: r, stop: Number(r['Stop']), base });
+          order.push(key);
+        } else {
+          groups.get(key).stop = Math.min(groups.get(key).stop, Number(r['Stop']));
+        }
+        groups.get(key).rows.push(r);
+      }
+      // 2) Process unsequenced: merge into existing groups or create new unsequenced-only groups
+      const unseqGroups = new Map();
+      const unseqOrder = [];
+      unsequenced.forEach((r, i) => {
+        const [base] = splitAddr(r['Destination Address']);
+        const pseudoSeq = `${maxSeq + i + 1} (+${i + 1})`;
+        if (groups.has(base)) {
+          // Same address as a sequenced group → merge
+          groups.get(base).unseqLabels.push(pseudoSeq);
+        } else {
+          // Group unsequenced among themselves by address
+          if (!unseqGroups.has(base)) {
+            unseqGroups.set(base, { first: r, base, labels: [] });
+            unseqOrder.push(base);
+          }
+          unseqGroups.get(base).labels.push(pseudoSeq);
+        }
+      });
+      const out = [];
+      // 3) Output unsequenced-only groups (addresses with NO sequenced match)
+      unseqOrder.forEach(key => {
+        const g = unseqGroups.get(key);
+        const [base, line2] = splitAddr(g.first['Destination Address']);
+        out.push({ 'AT ID': g.first['AT ID'], 'Destination Address': expandAddress(base), 'Bairro': g.first['Bairro'], 'City': g.first['City'], 'Zipcode/Postal code': g.first['Zipcode/Postal code'], 'Latitude': g.first['Latitude'], 'Longitude': g.first['Longitude'], 'Address Line 2': line2 || null, 'Pacotes na Parada': g.labels.join(', ') });
+      });
+      // 4) Output sequenced groups (with merged unsequenced appended)
+      [...order].sort((a, b) => groups.get(a).stop - groups.get(b).stop).forEach(key => {
+        const g = groups.get(key);
+        const f = g.first;
+        const [, line2] = splitAddr(g.rows[0]['Destination Address']);
+        const seqNums = g.rows.map(r => String(r['Sequence']));
+        const allNums = [...seqNums, ...g.unseqLabels].join(', ');
+        out.push({ 'AT ID': f['AT ID'], 'Destination Address': expandAddress(g.base), 'Bairro': f['Bairro'], 'City': f['City'], 'Zipcode/Postal code': f['Zipcode/Postal code'], 'Latitude': f['Latitude'], 'Longitude': f['Longitude'], 'Address Line 2': line2 || null, 'Pacotes na Parada': allNums });
+      });
+      return { out, unsequencedCount: unsequenced.length };
+    }
+    // ── Processing flow ──
+    // CHANGED: 3 steps instead of 4 (removed "Aplicando restrições e veículos")
+    const steps = [
+      { id: 'step-1', pct: 25  },
+      { id: 'step-2', pct: 65  },
+      { id: 'step-3', pct: 100 },
+    ];
+    let startTime;
+    function startProcessing() {
+      if (!selectedFile) return;
+      document.getElementById('upload-screen').style.display = 'none';
+      document.getElementById('processing-screen').style.display = 'flex';
+      startTime = Date.now();
+      steps.forEach((s, i) => { const el = document.getElementById(s.id); el.className = 'step-item'; el.querySelector('.step-dot').textContent = i + 1; });
+      activateStep(0);
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        try {
+          const wb = XLSX.read(e.target.result, { type: 'array' });
+          const ws = wb.Sheets[wb.SheetNames[0]];
+          const rows = XLSX.utils.sheet_to_json(ws, { defval: null });
+          animateProgress(steps[0].pct, () => setTimeout(() => {
+            activateStep(1);
+            animateProgress(steps[1].pct, () => setTimeout(() => {
+              activateStep(2);
+              // CHANGED: destructure to get unsequencedCount
+              const { out: transformed, unsequencedCount } = transformRows(rows);
+              const wbOut = XLSX.utils.book_new();
+              const wsOut = XLSX.utils.json_to_sheet(transformed, {
+                header: ['AT ID', 'Destination Address', 'Bairro', 'City', 'Zipcode/Postal code', 'Latitude', 'Longitude', 'Address Line 2', 'Pacotes na Parada']
+              });
+              XLSX.utils.book_append_sheet(wbOut, wsOut, 'Planilha Processada');
+              processedWB = wbOut;
+              const totalPacotes = transformed.reduce((acc, r) => acc + String(r['Pacotes na Parada']).split(',').length, 0);
+              animateProgress(steps[2].pct, () => {
+                markDone(2);
+                // CHANGED: pass unsequencedCount to showSuccess
+                setTimeout(() => showSuccess(transformed.length, totalPacotes, unsequencedCount), 500);
+              });
+            }, 350));
+          }, 350));
+        } catch (err) {
+          alert('Erro ao ler o arquivo: ' + err.message);
+          resetApp();
+        }
+      };
+      reader.readAsArrayBuffer(selectedFile);
+    }
+    function activateStep(i) { if (i > 0) markDone(i - 1); document.getElementById(steps[i].id).className = 'step-item active'; }
+    function markDone(i) { const el = document.getElementById(steps[i].id); el.className = 'step-item done'; el.querySelector('.step-dot').textContent = '✓'; }
+    function animateProgress(target, cb) {
+      const bar = document.getElementById('progress-bar');
+      const pct = document.getElementById('progress-pct');
+      const current = parseFloat(bar.style.width) || 0;
+      const start = performance.now();
+      (function frame(now) {
+        const p = Math.min((now - start) / 700, 1);
+        const ease = 1 - Math.pow(1 - p, 3);
+        const v = current + (target - current) * ease;
+        bar.style.width = v + '%';
+        pct.textContent = Math.round(v) + '%';
+        if (p < 1) requestAnimationFrame(frame);
+        else if (cb) cb();
+      })(start);
+    }
+    // CHANGED: added semOrdem parameter, removed elapsed time
+    function showSuccess(paradas, pacotes, semOrdem) {
+      document.getElementById('processing-screen').style.display = 'none';
+      document.getElementById('success-screen').style.display = 'flex';
+      document.getElementById('stat-rotas').textContent    = paradas;
+      document.getElementById('stat-veiculos').textContent = pacotes;
+      document.getElementById('stat-sem-ordem').textContent = semOrdem;
+    }
+    function downloadFile() {
+      if (!processedWB) return;
+      const base = selectedFile ? selectedFile.name.replace(/\.[^.]+$/, '') : 'rotas';
+      XLSX.writeFile(processedWB, `${base}_processado.xlsx`);
+    }
+    function resetApp() {
+      document.getElementById('success-screen').style.display = 'none';
+      document.getElementById('upload-screen').style.display = 'flex';
+      filePicker.style.display = 'flex';
+      fileChosen.style.display = 'none';
+      fileInput.value = ''; selectedFile = null; processedWB = null;
+      document.getElementById('progress-bar').style.width = '0%';
+      document.getElementById('progress-pct').textContent = '0%';
+    }
+    function installApp() {
+      if (window.deferredPrompt) { window.deferredPrompt.prompt(); window.deferredPrompt.userChoice.then(() => { window.deferredPrompt = null; }); }
+      dismissBanner();
+    }
+    function dismissBanner() {
+      const b = document.getElementById('install-banner');
+      b.style.transition = 'opacity 0.3s, transform 0.3s';
+      b.style.opacity = '0'; b.style.transform = 'translateY(60px)';
+      setTimeout(() => b.remove(), 300);
+    }
+    window.addEventListener('beforeinstallprompt', (e) => { e.preventDefault(); window.deferredPrompt = e; });
+  </script>
+</body>
+</html>
