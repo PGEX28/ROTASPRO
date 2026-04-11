@@ -4,6 +4,8 @@ const PREFIX_MAP: [RegExp, string][] = [
   [/^R\b/i, 'Rua'],
   [/^Rod\b/i, 'Rodovia'],
   [/^Est\b/i, 'Estrada'],
+  [/^Trav\b/i, 'Travessa'],
+  [/^Al\b/i, 'Alameda'],
 ]
 
 const MIDDLE_EXP: Record<string, string> = {
@@ -44,32 +46,88 @@ export type TransformResult = {
   unsequencedCount: number
 }
 
-function expandAddress(name: string): string {
-  if (ADDR_CORR[name]) return ADDR_CORR[name]
+/**
+ * Expande abreviações para exibição final na planilha
+ */
+function expandAddress(addr: string): string {
+  if (ADDR_CORR[addr]) return ADDR_CORR[addr]
+  let expanded = addr
   for (const [pat, rep] of PREFIX_MAP) {
-    if (pat.test(name)) { name = name.replace(pat, rep); break }
+    if (pat.test(expanded)) { expanded = expanded.replace(pat, rep); break }
   }
   for (const [abbr, full] of Object.entries(MIDDLE_EXP)) {
-    if (name.includes(abbr)) name = name.split(abbr).join(full)
+    if (expanded.includes(abbr)) expanded = expanded.split(abbr).join(full)
   }
-  return name
+  return expanded
 }
 
+/**
+ * Separa o endereço base do complemento.
+ * Agora mais inteligente: tenta identificar o número para cortar o complemento.
+ */
 function splitAddr(addr: string): [string, string | null] {
-  const parts = (addr || '').trim().split(', ')
-  return [
-    parts.slice(0, 2).join(', '),
-    parts.length > 2 ? parts.slice(2).join(', ') : null,
-  ]
+  const raw = (addr || '').trim()
+  const parts = raw.split(', ')
+  
+  // Se tiver pelo menos Logradouro e Número
+  if (parts.length >= 2) {
+    const base = parts.slice(0, 2).join(', ')
+    const line2 = parts.length > 2 ? parts.slice(2).join(', ') : null
+    return [base, line2]
+  }
+  
+  return [raw, null]
 }
 
-function normalizeKey(addr: string): string {
-  return addr
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // strip accents
-    .toLowerCase()
-    .replace(/\s+/g, ' ')                               // collapse whitespace
-    .replace(/[.,;:]+/g, '')                             // strip punctuation
-    .trim()
+/**
+ * Gera uma chave única e definitiva para agrupamento.
+ * Ignora variações de escrita, maiúsculas, acentos e complementos.
+ */
+function getGroupingKey(r: InputRow): string {
+  const addr = String(r['Destination Address'] ?? '')
+  const lat = r['Latitude']
+  const lon = r['Longitude']
+
+  // 1. Normalização básica (sem acentos, minúsculo)
+  let clean = addr.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+  // 2. Expansão agressiva de termos comuns para a CHAVE
+  const expansions: [RegExp, string][] = [
+    [/\br[.\s]+/g, 'rua '],
+    [/\bav[.\s]+/g, 'avenida '],
+    [/\bsrv[.\s]+/g, 'servidao '],
+    [/\brod[.\s]+/g, 'rodovia '],
+    [/\best[.\s]+/g, 'estrada '],
+    [/\bal[.\s]+/g, 'alameda '],
+    [/\btrav[.\s]+/g, 'travessa '],
+    [/\btrv[.\s]+/g, 'travessa '],
+    [/\bpca[.\s]+/g, 'praça '],
+    [/\bprca[.\s]+/g, 'praça '],
+    [/\bdr[.\s]+/g, 'doutor '],
+    [/\bprof[.\s]+/g, 'professor '],
+  ]
+  expansions.forEach(([re, rep]) => { clean = clean.replace(re, rep) })
+
+  // 3. Extração do Logradouro + Número (ignora o resto)
+  const parts = clean.split(',')
+  let addrKey = ''
+  if (parts.length >= 2) {
+    const street = parts[0].replace(/[^a-z0-9]/g, '')
+    const num = parts[1].match(/\d+/)?.[0] || ''
+    addrKey = street + num
+  } else {
+    // Fallback: remove tudo que não é alfanumérico
+    addrKey = clean.replace(/[^a-z0-9]/g, '')
+  }
+
+  // 4. Coordenadas como reforço (arredondadas para ~1m de precisão)
+  const latKey = lat && !isNaN(Number(lat)) ? Number(lat).toFixed(5) : ''
+  const lonKey = lon && !isNaN(Number(lon)) ? Number(lon).toFixed(5) : ''
+
+  // Se o endereço resultou em algo muito curto/vazio, as coordenadas mandam
+  if (addrKey.length < 3) return `geo_${latKey}_${lonKey}`
+
+  return `${addrKey}_${latKey}_${lonKey}`
 }
 
 export function transformRows(rows: InputRow[]): TransformResult {
@@ -85,38 +143,40 @@ export function transformRows(rows: InputRow[]): TransformResult {
       ? Math.max(...sequenced.map((r) => Number(r['Sequence'])))
       : 0
 
-  // 1) Group sequenced rows by normalized base address
+  // 1) Agrupar linhas sequenciadas por chave única
   type Group = { rows: InputRow[]; unseqLabels: string[]; first: InputRow; stop: number; base: string }
   const groups = new Map<string, Group>()
   const order: string[] = []
 
   for (const r of sequenced) {
+    const key = getGroupingKey(r)
     const [base] = splitAddr(String(r['Destination Address'] ?? ''))
-    const key = normalizeKey(base)
+    
     if (!groups.has(key)) {
       groups.set(key, { rows: [], unseqLabels: [], first: r, stop: Number(r['Stop']), base })
       order.push(key)
     } else {
+      // Manter o menor número de parada para o grupo
       groups.get(key)!.stop = Math.min(groups.get(key)!.stop, Number(r['Stop']))
     }
     groups.get(key)!.rows.push(r)
   }
 
-  // 2) Process unsequenced: merge into existing groups or create new unsequenced-only groups
+  // 2) Processar não-sequenciados (manuais): mesclar em grupos existentes ou criar novos
   type UnseqGroup = { first: InputRow; base: string; labels: string[] }
   const unseqGroups = new Map<string, UnseqGroup>()
   const unseqOrder: string[] = []
 
   unsequenced.forEach((r, i) => {
+    const key = getGroupingKey(r)
     const [base] = splitAddr(String(r['Destination Address'] ?? ''))
-    const key = normalizeKey(base)
     const pseudoSeq = `${maxSeq + i + 1} (+${i + 1})`
 
     if (groups.has(key)) {
-      // Same address as a sequenced group → merge
+      // Mesmo local de um grupo já sequenciado -> Mesclar
       groups.get(key)!.unseqLabels.push(pseudoSeq)
     } else {
-      // Group unsequenced among themselves by address
+      // Agrupar unsequenced entre si se tiverem o mesmo endereço
       if (!unseqGroups.has(key)) {
         unseqGroups.set(key, { first: r, base, labels: [] })
         unseqOrder.push(key)
@@ -127,7 +187,7 @@ export function transformRows(rows: InputRow[]): TransformResult {
 
   const out: OutputRow[] = []
 
-  // 3) Output unsequenced-only groups (addresses with NO sequenced match)
+  // 3) Saída de grupos APENAS manuais (sem correspondência sequenciada)
   unseqOrder.forEach((key) => {
     const g = unseqGroups.get(key)!
     const [base, line2] = splitAddr(String(g.first['Destination Address'] ?? ''))
@@ -144,7 +204,7 @@ export function transformRows(rows: InputRow[]): TransformResult {
     })
   })
 
-  // 4) Output sequenced groups (with merged unsequenced appended)
+  // 4) Saída de grupos sequenciados (com manuais mesclados inclusos)
   ;[...order]
     .sort((a, b) => groups.get(a)!.stop - groups.get(b)!.stop)
     .forEach((key) => {
