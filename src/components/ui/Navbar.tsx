@@ -59,7 +59,7 @@ export default function Navbar({ credits }: NavProps) {
 
   return (
     <header className="sticky top-0 z-50 backdrop-blur-md border-b border-[var(--border-subtle)] bg-[rgba(15,13,12,0.85)]">
-      <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between">
+      <div className="max-w-5xl mx-auto px-4 py-2.5 md:py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-xl overflow-hidden shadow-[0_0_18px_var(--orange-glow)] flex-shrink-0">
@@ -91,18 +91,18 @@ export default function Navbar({ credits }: NavProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          {/* Credits badge */}
+          {/* Credits badge - Visible on mobile for better interaction */}
           {credits !== undefined && (
-            <Link href="/pricing" className="hidden sm:flex items-center gap-1.5 bg-[rgba(240,58,23,0.12)] border border-[var(--border)] rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--orange)] hover:bg-[rgba(240,58,23,0.2)] transition-all">
-              <Zap size={13} fill="currentColor" />
-              {credits} créditos
+            <Link href="/pricing" className="flex items-center gap-1 bg-[rgba(240,58,23,0.12)] border border-[rgba(240,58,23,0.2)] rounded-full px-2.5 py-1 md:px-3 md:py-1.5 text-[11px] md:text-sm font-bold text-[var(--orange)] hover:bg-[rgba(240,58,23,0.2)] active:scale-95 transition-all">
+              <Zap size={11} className="md:w-[13px] md:h-[13px]" fill="currentColor" />
+              {credits} <span className="hidden xs:inline ml-0.5">créditos</span>
             </Link>
           )}
 
-          {/* User email */}
+          {/* User profile / email - Hidden on mobile, shown on desktop */}
           {user && (
-            <span className="hidden lg:block text-xs text-[var(--text-muted)] max-w-[140px] truncate">
-              {user.full_name || user.email}
+            <span className="hidden md:block text-xs text-[var(--text-muted)] max-w-[120px] truncate">
+              {user.full_name || user.email?.split('@')[0]}
             </span>
           )}
 

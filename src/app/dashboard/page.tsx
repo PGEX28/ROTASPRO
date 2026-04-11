@@ -177,7 +177,7 @@ export default function DashboardPage() {
       <Navbar credits={credits} />
 
       {/* Page body — centered horizontally AND vertically */}
-      <main className="flex-1 flex items-center justify-center px-4 py-10 w-full">
+      <main className="flex-1 flex items-start md:items-center justify-center px-4 py-6 md:py-10 w-full">
         <div className="w-full max-w-2xl flex flex-col gap-6">
 
           {/* Hero */}
@@ -185,10 +185,10 @@ export default function DashboardPage() {
             <div className="inline-flex items-center gap-2 bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.25)] rounded-full px-4 py-1.5 text-[11px] font-semibold text-[var(--orange-light)] uppercase tracking-widest mb-4">
               <Zap size={11} fill="currentColor" /> Processador de Planilhas
             </div>
-            <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-[var(--text)] tracking-tight leading-tight mb-3">
-              Processe suas <span className="text-[var(--orange)]">rotas</span><br /> com precisão
+            <h1 className="font-syne font-extrabold text-2xl md:text-3xl lg:text-4xl text-[var(--text)] tracking-tight leading-tight mb-3">
+              Processe suas <span className="text-[var(--orange)]">rotas</span><br className="hidden md:block" /> com precisão
             </h1>
-            <p className="text-[var(--text-muted)] text-sm leading-relaxed">
+            <p className="text-[var(--text-muted)] text-xs md:text-sm leading-relaxed max-w-sm mx-auto">
               Envie sua planilha Shopee e receba as rotas organizadas em segundos.
             </p>
           </div>
@@ -198,14 +198,14 @@ export default function DashboardPage() {
             {[
               { icon: Zap,         label: 'Créditos',    value: credits,        color: 'text-[var(--orange)]', bg: 'bg-[rgba(240,58,23,0.1)]',  href: '/pricing' },
               { icon: TrendingUp,  label: 'Processadas', value: processedCount, color: 'text-[var(--green)]',  bg: 'bg-[rgba(34,197,94,0.1)]',  href: '/history' },
-              { icon: CreditCard,  label: 'Histórico',   value: 'Ver',          color: 'text-blue-400',        bg: 'bg-[rgba(96,165,250,0.1)]', href: '/history' },
+              { icon: FileSpreadsheet,  label: 'Histórico',   value: 'Ver',          color: 'text-blue-400',        bg: 'bg-[rgba(96,165,250,0.1)]', href: '/history' },
             ].map(({ icon: Icon, label, value, color, bg, href }) => (
-              <Link key={label} href={href} className="rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] p-3.5 flex flex-col items-center gap-1.5 hover:border-[rgba(240,58,23,0.3)] transition-all text-center">
-                <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>
-                  <Icon size={15} className={color} />
+              <Link key={label} href={href} className="rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] p-3 md:p-4 flex flex-col items-center gap-1 hover:border-[rgba(240,58,23,0.3)] transition-all text-center">
+                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${bg} flex items-center justify-center`}>
+                  <Icon size={14} className={color} />
                 </div>
-                <div className={`font-syne font-bold text-xl leading-none ${color}`}>{value}</div>
-                <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
+                <div className={`font-syne font-bold text-lg md:text-xl leading-none ${color}`}>{value}</div>
+                <div className="text-[9px] md:text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
               </Link>
             ))}
           </div>
@@ -243,14 +243,14 @@ export default function DashboardPage() {
           {/* Main card */}
           <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden relative animate-slide-in" style={{ animationDelay: '0.1s' }}>
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--orange)] to-transparent" />
-            <div className="p-8 sm:p-10">
+            <div className="p-6 md:p-10">
 
               {/* UPLOAD */}
               {screen === 'upload' && (
                 <div className="flex flex-col gap-6">
                   <div className="text-center">
-                    <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-2">Enviar planilha</h2>
-                    <p className="text-[var(--text-muted)] text-base">Selecione ou arraste sua planilha de rotas</p>
+                    <h2 className="font-syne font-extrabold text-xl md:text-2xl text-[var(--text)] mb-2">Enviar planilha</h2>
+                    <p className="text-[var(--text-muted)] text-sm md:text-base">Selecione ou arraste sua planilha de rotas</p>
                   </div>
 
                   {!file ? (
@@ -259,8 +259,8 @@ export default function DashboardPage() {
                       onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed border-[rgba(240,58,23,0.3)] rounded-2xl p-10 flex flex-col items-center gap-4 cursor-pointer hover:border-[var(--orange)] hover:bg-[rgba(240,58,23,0.03)] transition-all text-center group"
                     >
-                      <div className="w-16 h-16 rounded-2xl bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.2)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Upload size={28} className="text-[var(--orange)]" />
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.2)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload size={24} className="text-[var(--orange)]" />
                       </div>
                       <div>
                         <p className="font-syne font-bold text-[var(--text)] mb-1">Selecionar planilha</p>
@@ -302,11 +302,11 @@ export default function DashboardPage() {
                   <button
                     onClick={startProcessing}
                     disabled={!file || credits === 0}
-                    className="w-full bg-[var(--orange)] text-white rounded-xl py-5 font-syne font-extrabold text-lg flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(240,58,23,0.4)] hover:bg-[var(--orange-light)] hover:shadow-[0_6px_32px_rgba(240,58,23,0.6)] hover:-translate-y-0.5 transition-all disabled:bg-[var(--surface2)] disabled:text-[var(--text-dim)] disabled:border disabled:border-[var(--border-subtle)] disabled:shadow-none disabled:hover:translate-y-0 disabled:cursor-not-allowed"
+                    className="w-full bg-[var(--orange)] text-white rounded-xl py-4 md:py-5 font-syne font-extrabold text-base md:text-lg flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(240,58,23,0.4)] hover:bg-[var(--orange-light)] active:scale-[0.98] transition-all disabled:bg-[var(--surface2)] disabled:text-[var(--text-dim)] disabled:border disabled:shadow-none disabled:cursor-not-allowed"
                   >
-                    <Zap size={20} fill="currentColor" />
+                    <Zap size={18} fill="currentColor" />
                     <span className="tracking-wide">Processar Planilha</span>
-                    <span className="text-[11px] font-bold tracking-wider opacity-80 bg-black/20 px-2.5 py-1 rounded-full uppercase ml-1">1 crédito</span>
+                    <span className="text-[10px] font-bold tracking-wider opacity-80 bg-black/20 px-2 py-0.5 rounded-full uppercase ml-1">1 crédito</span>
                   </button>
 
                   <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5">
@@ -371,8 +371,8 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </div>
-                  <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-14 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 transition-all my-[-12px]">
-                    <Download size={22} /> Baixar Planilha Processada
+                  <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-6 md:py-8 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 active:scale-[0.98] transition-all">
+                    <Download size={20} /> Baixar Planilha Processada
                   </button>
                   <div className="flex items-center gap-3 w-full">
                     <div className="flex-1 h-px bg-[var(--border-subtle)]" />
