@@ -1,7 +1,11 @@
 import Stripe from 'stripe'
 
-// Pegando a chave de producao que voce acabou de colar no .env.local
-const skLive = "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";
+// Pegando a chave do ambiente para segurança
+const skLive = process.env.STRIPE_SECRET_KEY;
+if (!skLive) {
+  console.error("ERRO: STRIPE_SECRET_KEY não encontrada no ambiente.");
+  process.exit(1);
+}
 const stripe = new Stripe(skLive);
 
 async function main() {
