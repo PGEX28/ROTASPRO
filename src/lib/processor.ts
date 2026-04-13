@@ -170,7 +170,7 @@ function getGroupingKey(r: InputRow): string {
 
 
 
-async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number } | null> {
+async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number; formatted_address?: string } | null> {
   try {
     const res = await fetch('/api/geocode', {
       method: 'POST',
@@ -179,7 +179,11 @@ async function fetchCoords(address: string, city?: string, forceRefresh: boolean
     })
     if (!res.ok) return null
     const data = await res.json()
-    return { lat: data.lat, lng: data.lng }
+    return { 
+      lat: data.lat, 
+      lng: data.lng,
+      formatted_address: data.formatted_address
+    }
   } catch {
     return null
   }
@@ -233,7 +237,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   
   // 2. Buscar coordenadas para todas as queries únicas (em paralelo)
   // Usamos a primeira linha encontrada para cada query como âncora de coordenada
-  const coordsMap = new Map<string, { lat: number; lng: number }>()
+  const coordsMap = new Map<string, { lat: number; lng: number; formatted_address?: string }>()
   await Promise.all(uniqueQueries.map(async (query) => {
     const city = queryToCity.get(query)
     const associatedRows = rows.filter(r => getFullQuery(r) === query)
