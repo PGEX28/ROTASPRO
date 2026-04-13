@@ -303,19 +303,27 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   }))
 
   /**
-   * Tenta corrigir o endereço usando os dados do CEP
+   * Tenta corrigir o endereço usando os dados do CEP e extraindo o número original
    */
   const getCorrectedAddr = (r: InputRow) => {
     const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
     const info = cepMap.get(cep)
     const originalAddr = String(r['Destination Address'] ?? '').trim()
     
+    // Primeiro, vamos tentar achar o número no endereço original
+    // Procuramos por: ", 123", " nº 123", " n: 123" ou apenas um número no final
+    const numMatch = originalAddr.match(/(?:,|\s+n[º°:]?\s*|#\s*)(\d+[a-z]?)\b/i) || 
+                     originalAddr.match(/\b(\d+[a-z]?)$/i) ||
+                     originalAddr.match(/(\d+)/)
+    const num = numMatch ? numMatch[1] : ''
+
     if (info && info.logradouro) {
-      // Extrair o número do endereço original (procurando padrão ", 123" ou " 123" no final)
-      const numMatch = originalAddr.match(/(?:,|\s+)(\d+)\s*$/) || originalAddr.match(/(\d+)/)
-      const num = numMatch ? numMatch[1] : ''
+      // Se temos o logradouro oficial do CEP, usamos ele como base absoluta
       return `${info.logradouro}${num ? ', ' + num : ''}`
     }
+
+    // Fallback: se o CEP não retornar rua (CEP único de cidade/bairro), 
+    // usamos o endereço original padronizado
     return standardizeAddress(originalAddr)
   }
 
