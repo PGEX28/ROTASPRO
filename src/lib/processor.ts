@@ -334,16 +334,18 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
           return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
         }
 
-        // 2. Confiança Limitada (Outros): Mantemos a trava rígida de 500m e nome exato
+        // 2. Confiança Limitada (Aproximado/Interpolado): Mantemos a trava de 500m
+        // Mas usamos o corpo do nome (Fuzzy) para permitir correções de Rua vs Servidão
         if (dist > 0.5) {
-          console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto específico. Usando Tira-Teima da Planilha.`)
+          console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto aproximado. Usando Tira-Teima da Planilha.`)
           return r // Mantém original
         }
 
-        // Validação de nome para resultados não-rooftop (Mais rígida)
-        if (!googleAddr.includes(searchStreetFull)) {
-            console.warn(`Nome exato não coincide em resultado aproximado. Rejeitando.`)
-            return r
+        if (googleAddr.includes(searchStreetBody)) {
+          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+        } else {
+          console.warn(`Nome da rua não coincide (Corpo): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
+          return r
         }
       }
 
