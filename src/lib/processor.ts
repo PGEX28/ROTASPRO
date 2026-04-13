@@ -122,23 +122,15 @@ function splitAddr(addr: string): [string, string | null] {
  * Gera uma chave única focada APENAS em Logradouro e Número.
  * Aplica correções de ADDR_CORR e expansões antes de gerar a chave.
  */
-function getGroupingKey(r: InputRow): string {
-  const rawAddr = String(r['Destination Address'] ?? '')
-  
-  // 1. Aplica correções estruturais (ex: Nereu Guizone -> Servidão Osnildo...)
-  let addr = rawAddr
-  if (ADDR_CORR[rawAddr]) {
-    addr = ADDR_CORR[rawAddr]
-  }
-
-  // 2. Normalização de texto (remove acentos e converte para minúsculo)
-  let clean = addr.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
-
-  // 3. Expansão massiva de abreviações para garantir correspondência de chaves
+/**
+ * Expande abreviações comuns para nomes oficiais e completos
+ */
+function expandAbbreviations(text: string): string {
+  let clean = text.toLowerCase()
   const expansions: [RegExp, string][] = [
     [/\br[.\s]+/g, 'rua '],
     [/\bav[.\s]+/g, 'avenida '],
-    [/\bsrv[.\s]+/g, 'servidao '],
+    [/\bsrv[.\s]+/g, 'servidão '],
     [/\brod[.\s]+/g, 'rodovia '],
     [/\best[.\s]+/g, 'estrada '],
     [/\bal[.\s]+/g, 'alameda '],
@@ -156,6 +148,23 @@ function getGroupingKey(r: InputRow): string {
     [/\bsto[.\s]+/g, 'santo '],
   ]
   expansions.forEach(([re, rep]) => { clean = clean.replace(re, rep) })
+  return clean
+}
+
+function getGroupingKey(r: InputRow): string {
+  const rawAddr = String(r['Destination Address'] ?? '')
+  
+  // 1. Aplica correções estruturais
+  let addr = rawAddr
+  if (ADDR_CORR[rawAddr]) {
+    addr = ADDR_CORR[rawAddr]
+  }
+
+  // 2. Normalização de texto
+  let clean = addr.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
+
+  // 3. Expansão massiva
+  clean = expandAbbreviations(clean)
 
   // 3.5 Remoção de conectores e espaços extras para chave robusta
   clean = clean.replace(/\b(de|do|da|dos|das|e)\b/g, ' ')
@@ -245,7 +254,7 @@ function normalizeStreetBody(name: string): string {
 /**
  * Busca informações oficiais do CEP na API ViaCEP
  */
-async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string } | null> {
+async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string; uf: string } | null> {
   const cleanCep = String(cep || '').replace(/\D/g, '')
   if (cleanCep.length !== 8) return null
   
@@ -257,7 +266,8 @@ async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: 
     return {
       logradouro: data.logradouro,
       bairro: data.bairro,
-      localidade: data.localidade
+      localidade: data.localidade,
+      uf: data.uf
     }
   } catch {
     return null
@@ -266,18 +276,11 @@ async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: 
 
 /**
  * Padroniza o endereço para um formato limpo que o Google Maps entende melhor
- * Ex: "SRV JOAO 123 CASA" -> "Servidão João, 123"
  */
 function standardizeAddress(address: string): string {
-  let clean = address.trim()
-    // 1. Padronizar Prefixos
-    .replace(/^srv\.?\s+/i, 'Servidão ')
-    .replace(/^r\.?\s+/i, 'Rua ')
-    .replace(/^av\.?\s+/i, 'Avenida ')
-    .replace(/^rod\.?\s+/i, 'Rodovia ')
-    .replace(/^trav\.?\s+/i, 'Travessa ')
+  let clean = expandAbbreviations(address.trim())
     
-    // 2. Limpeza de ruídos e formatação de número
+    // 1. Limpeza de ruídos e formatação de número
     .replace(/\s+n[:º°]?\s*(\d+)/i, ', $1') // " n: 123" -> ", 123"
     .replace(/,\s+/g, ', ') // Padroniza vírgula existente
 
@@ -295,7 +298,7 @@ function standardizeAddress(address: string): string {
 export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
   // 0. Pré-processamento de CEPs
   const uniqueCeps = Array.from(new Set(rows.map(r => String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')).filter(c => c.length === 8)))
-  const cepMap = new Map<string, { logradouro: string; bairro: string; localidade: string }>()
+  const cepMap = new Map<string, { logradouro: string; bairro: string; localidade: string; uf: string }>()
   
   await Promise.all(uniqueCeps.map(async (cep) => {
     const info = await fetchCepInfo(cep)
@@ -335,8 +338,9 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     
     const bairro = info?.bairro || String(r['Bairro'] ?? '').trim()
     const city = info?.localidade || String(r['City'] ?? '').trim()
+    const state = info?.uf || ''
     
-    const parts = [addrClean, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    const parts = [addrClean, bairro, city, state, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
 
