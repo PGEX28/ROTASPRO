@@ -329,7 +329,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     const standardAddr = standardizeAddress(originalAddr)
     
     // Atualizamos o endereço base para o formato padrão na planilha final
-    const updatedRow = { ...r, 'Destination Address': standardAddr }
+    const updatedRow = { ...r, 'Destination Address': standardAddr } as InputRow
     
     const query = getFullQuery(r)
     const newCoords = coordsMap.get(query)
@@ -353,7 +353,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         if (isGeneric) {
           // No caso genérico, se o "corpo" do nome bater, a gente aceita
           if (googleAddr.includes(searchStreetBody)) {
-            return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
+            return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
           } else {
             console.warn(`Nome da rua não coincide (Genérico): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
             return updatedRow
@@ -369,7 +369,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
             console.warn(`ROOFTOP muito distante (${dist.toFixed(2)}km). Proteção contra salto de bairro ativada.`)
             return updatedRow
           }
-          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
         }
 
         // 2. Confiança Limitada (Aproximado/Interpolado): Mantemos a trava de 500m
@@ -380,14 +380,14 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         }
 
         if (googleAddr.includes(searchStreetBody)) {
-          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
         } else {
           console.warn(`Nome da rua não coincide (Corpo): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
           return updatedRow
         }
       }
 
-      return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
+      return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
     }
     return updatedRow
   })
