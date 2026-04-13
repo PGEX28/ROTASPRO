@@ -234,11 +234,10 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   // Função auxiliar para construir o endereço completo para o Google
   const getFullQuery = (r: InputRow) => {
     const addr = String(r['Destination Address'] ?? '').trim()
-    // Removemos o bairro da query de busca para o teste de "Logradouro Puro"
-    // const bairro = String(r['Bairro'] ?? '').trim()
+    const bairro = String(r['Bairro'] ?? '').trim()
     const city = String(r['City'] ?? '').trim()
     // Filtramos partes vazias e adicionamos "Brazil" para forçar o país
-    const parts = [addr, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    const parts = [addr, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
 
@@ -300,19 +299,19 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
         // Aumentamos a margem para 10km para permitir saídas da Caiacanga -> Alto Ribeirão
         if (isGeneric) {
-          const googleCore = getCoreName(String(newCoords.formatted_address || ''))
-          const searchCore = getCoreName(String(r['Destination Address'] || ''))
+          const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
+          const searchStreet = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
           
-          // Validação extra: O Google achou a rua certa (mesmo que mude de Rua para Servidão)?
-          if (googleCore.includes(searchCore) || searchCore.includes(googleCore) || dist < 10) {
+          // Validação extra: O Google achou a rua certa?
+          if (googleAddr.includes(searchStreet) || dist < 10) {
             return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
           }
         }
 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
-        // Aplicamos trava de 2km para segurança em pontos específicos
-        if (dist > 2) {
-          console.warn(`Salto de bairro detectado (${dist.toFixed(2)}km) em ponto específico. Mantendo Norte da Planilha.`)
+        // Aplicamos trava de 300m para desempate entre homônimos (Diferenciação Estrita)
+        if (dist > 0.3) {
+          console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto específico. Usando Tira-Teima da Planilha.`)
           return r // Mantém original
         }
       }
