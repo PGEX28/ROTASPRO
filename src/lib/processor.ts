@@ -208,10 +208,11 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   // Função auxiliar para construir o endereço completo para o Google
   const getFullQuery = (r: InputRow) => {
     const addr = String(r['Destination Address'] ?? '').trim()
-    const bairro = String(r['Bairro'] ?? '').trim()
+    // Removemos o bairro da query de busca para o teste de "Logradouro Puro"
+    // const bairro = String(r['Bairro'] ?? '').trim()
     const city = String(r['City'] ?? '').trim()
     // Filtramos partes vazias e adicionamos "Brazil" para forçar o país
-    const parts = [addr, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    const parts = [addr, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
 
