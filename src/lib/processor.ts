@@ -77,6 +77,32 @@ function expandAddress(addr: string): string {
 }
 
 /**
+ * Remove prefixos (Rua, Servidão, etc) para comparação de nomes "nus"
+ */
+function getCoreName(addr: string): string {
+  let core = addr.toLowerCase()
+                 .normalize('NFD')
+                 .replace(/[\u0300-\u036f]/g, '')
+                 .split(',')[0] // Pega só antes da vírgula
+                 .trim()
+
+  const prefixes = [
+    /^rua\b/i, /^avenida\b/i, /^servidao\b/i, /^rodovia\b/i, 
+    /^estrada\b/i, /^travessa\b/i, /^alameda\b/i, /^pca\b/i, /^praca\b/i,
+    /^srv\b/i, /^av\b/i, /^rod\b/i, /^est\b/i, /^trav\b/i, /^al\b/i, /^r\b/i
+  ]
+
+  for (const p of prefixes) {
+    if (p.test(core)) {
+      core = core.replace(p, '').trim()
+      break
+    }
+  }
+
+  return core
+}
+
+/**
  * Separa o endereço base do complemento.
  */
 function splitAddr(addr: string): [string, string | null] {
@@ -274,12 +300,11 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
         // Aumentamos a margem para 10km para permitir saídas da Caiacanga -> Alto Ribeirão
         if (isGeneric) {
-          const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
-          const searchStreet = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
+          const googleCore = getCoreName(String(newCoords.formatted_address || ''))
+          const searchCore = getCoreName(String(r['Destination Address'] || ''))
           
-          // Validação extra: O Google achou a rua certa?
-          // Se o nome da rua não estiver no resultado do Google, mantemos o original por segurança
-          if (googleAddr.includes(searchStreet) || dist < 10) {
+          // Validação extra: O Google achou a rua certa (mesmo que mude de Rua para Servidão)?
+          if (googleCore.includes(searchCore) || searchCore.includes(googleCore) || dist < 10) {
             return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
           }
         }
