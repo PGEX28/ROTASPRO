@@ -68,9 +68,12 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Endereço não encontrado no Google Maps', status: data.status }, { status: 404 })
     }
 
-    const { lat, lng } = data.results[0].geometry.location
-    const locationType = data.results[0].geometry.location_type
-    const formattedAddress = data.results[0].formatted_address
+    // Busca inteligente: Priorizar ROOFTOP se existir em qualquer um dos resultados retornados
+    const bestResult = data.results.find((r: any) => r.geometry.location_type === 'ROOFTOP') || data.results[0]
+
+    const { lat, lng } = bestResult.geometry.location
+    const locationType = bestResult.geometry.location_type
+    const formattedAddress = bestResult.formatted_address
 
     // 4. Salvar no Cache
     await supabase.from('geocoding_cache').insert({
