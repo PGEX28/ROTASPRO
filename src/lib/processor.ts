@@ -363,20 +363,20 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
         // HIERARQUIA DE CONFIANÇA:
         
-        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, aceitamos até 2km
+        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, o Google é o CHEFE.
+        // Aumentamos para 15km para permitir correções de locais muito errados na planilha.
         if (isRooftop && googleAddr.includes(searchStreetBody)) {
-          if (dist > 2.0) {
-            console.warn(`ROOFTOP muito distante (${dist.toFixed(2)}km). Proteção contra salto de bairro ativada.`)
+          if (dist > 15.0) {
+            console.warn(`ROOFTOP extremamente distante (${dist.toFixed(2)}km). Proteção contra erro em outra cidade ativada.`)
             return updatedRow
           }
           return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
         }
 
-        // 2. Confiança Limitada (Aproximado/Interpolado): Mantemos a trava de 500m
-        // Mas usamos o corpo do nome (Fuzzy) para permitir correções de Rua vs Servidão
-        if (dist > 0.5) {
-          console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto aproximado. Usando Tira-Teima da Planilha.`)
-          return updatedRow // Mantém original
+        // 2. Confiança Limitada (Aproximado/Interpolado): Aumentamos para 2km
+        if (dist > 2.0) {
+          console.warn(`Desvio muito grande (${dist.toFixed(2)}km) em ponto aproximado. Mantendo original por segurança.`)
+          return updatedRow 
         }
 
         if (googleAddr.includes(searchStreetBody)) {
@@ -387,7 +387,12 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         }
       }
 
-      return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
+      // Se for genérico (0,0) ou não tiver trava, aceita direto se o nome bater
+      const googleAddr = (newCoords.formatted_address || '').toLowerCase()
+      const searchStreetBody = normalizeStreetBody(originalAddr)
+      if (googleAddr.includes(searchStreetBody)) {
+        return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
+      }
     }
     return updatedRow
   })
