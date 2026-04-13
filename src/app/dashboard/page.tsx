@@ -109,9 +109,10 @@ export default function DashboardPage() {
 
         setStep(0, 'done'); setStep(1, 'active')
         await animateProgress(25, 65)
-        const { out: transformed, unsequencedCount } = transformRows(rows)
+        const { out: transformed, unsequencedCount } = await transformRows(rows)
 
         setStep(1, 'done'); setStep(2, 'active')
+
         await animateProgress(65, 100)
 
         const wbOut = XLSX.utils.book_new()

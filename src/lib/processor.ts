@@ -6,6 +6,7 @@ const PREFIX_MAP: [RegExp, string][] = [
   [/^Est\b/i, 'Estrada'],
   [/^Trav\b/i, 'Travessa'],
   [/^Al\b/i, 'Alameda'],
+  [/^Pca\b/i, 'Praça'],
 ]
 
 const MIDDLE_EXP: Record<string, string> = {
@@ -52,9 +53,23 @@ export type TransformResult = {
 function expandAddress(addr: string): string {
   if (ADDR_CORR[addr]) return ADDR_CORR[addr]
   let expanded = addr
+  
+  // Normalizações específicas de meio de string
+  const inlineExpansions: [RegExp, string][] = [
+    [/\bN\s*Sra\b/i, 'Nossa Senhora'],
+    [/\bPe\.\b/i, 'Padre'],
+    [/\bProf\.\b/i, 'Professor'],
+    [/\bDr\.\b/i, 'Doutor'],
+  ]
+
   for (const [pat, rep] of PREFIX_MAP) {
     if (pat.test(expanded)) { expanded = expanded.replace(pat, rep); break }
   }
+
+  for (const [pat, rep] of inlineExpansions) {
+    expanded = expanded.replace(pat, rep)
+  }
+
   for (const [abbr, full] of Object.entries(MIDDLE_EXP)) {
     if (expanded.includes(abbr)) expanded = expanded.split(abbr).join(full)
   }
@@ -79,15 +94,21 @@ function splitAddr(addr: string): [string, string | null] {
 
 /**
  * Gera uma chave única focada APENAS em Logradouro e Número.
- * Removido o uso de coordenadas para evitar separação indevida de paradas no mesmo local.
+ * Aplica correções de ADDR_CORR e expansões antes de gerar a chave.
  */
 function getGroupingKey(r: InputRow): string {
-  const addr = String(r['Destination Address'] ?? '')
+  const rawAddr = String(r['Destination Address'] ?? '')
+  
+  // 1. Aplica correções estruturais (ex: Nereu Guizone -> Servidão Osnildo...)
+  let addr = rawAddr
+  if (ADDR_CORR[rawAddr]) {
+    addr = ADDR_CORR[rawAddr]
+  }
 
-  // 1. Normalização de texto (remove acentos e converte para minúsculo)
+  // 2. Normalização de texto (remove acentos e converte para minúsculo)
   let clean = addr.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase()
 
-  // 2. Expansão total de abreviações para garantir correspondência
+  // 3. Expansão massiva de abreviações para garantir correspondência de chaves
   const expansions: [RegExp, string][] = [
     [/\br[.\s]+/g, 'rua '],
     [/\bav[.\s]+/g, 'avenida '],
@@ -101,41 +122,168 @@ function getGroupingKey(r: InputRow): string {
     [/\bprca[.\s]+/g, 'praça '],
     [/\bdr[.\s]+/g, 'doutor '],
     [/\bprof[.\s]+/g, 'professor '],
+    [/\bsha[.\s]+/g, 'senhor '],
+    [/\bn\s+sra[.\s]+/g, 'nossa senhora '],
+    [/\bns[.\s]+/g, 'nossa senhora '],
+    [/\bpe[.\s]+/g, 'padre '],
     [/\bsta[.\s]+/g, 'santa '],
     [/\bsto[.\s]+/g, 'santo '],
   ]
   expansions.forEach(([re, rep]) => { clean = clean.replace(re, rep) })
 
-  // 3. Extração estrutural de Rua + Número
-  const parts = clean.split(',')
-  let street = ''
-  let num = ''
+  // 3.5 Remoção de conectores e espaços extras para chave robusta
+  clean = clean.replace(/\b(de|do|da|dos|das|e)\b/g, ' ')
+               .replace(/\s+/g, ' ')
+               .trim()
 
-  if (parts.length >= 2) {
-    // Formato padrão: Rua Nome, Número
-    street = parts[0].replace(/[^a-z0-9]/g, '')
-    num = parts[1].match(/\d+/)?.[0] || ''
+  // 4. Extração estrutural de Rua + Número
+  // Normalizamos separadores para espaços para facilitar a extração
+  const normalizedAddr = clean.replace(/[,\-\/\.]/g, ' ')
+  
+  // Busca pelo padrão "nome da rua + numero"
+  // (.+?) -> nome da rua (mínimo possível)
+  // \s+ -> espaço(s)
+  // (\d+) -> número
+  // \b -> limite de palavra
+  const match = normalizedAddr.match(/(.+?)\s+(\d+)\b/)
+  
+  let streetKey = ''
+  let numKey = ''
+
+  if (match) {
+    streetKey = match[1].replace(/[^a-z0-9]/g, '')
+    numKey = match[2]
   } else {
-    // Formato sem vírgula: Rua Nome 123
-    const match = clean.match(/(.+?)\s+(\d+)\b/)
-    if (match) {
-      street = match[1].replace(/[^a-z0-9]/g, '')
-      num = match[2]
-    } else {
-      // Fallback: remove tudo que não é alfanumérico para comparação direta
-      return clean.replace(/[^a-z0-9]/g, '')
-    }
+    // Fallback: se não achar o padrão, usa a string limpa inteira
+    return normalizedAddr.replace(/[^a-z0-9]/g, '')
   }
 
-  // A chave final é a combinação pura da rua e número
-  return street + num
+  // 5. Adição de Confluência por Coordenadas (Região aproximada)
+  // Usamos coordenadas truncadas para diferenciar ruas homônimas em cidades diferentes
+  // Multiplicar por 100 dá uma precisão de ~1.1km (nível de bairro)
+  // Isso evita agrupar "Rua 1, 10" do Centro com "Rua 1, 10" do Campeche.
+  const lat = Math.round(Number(r['Latitude'] || 0) * 100) 
+  const lon = Math.round(Number(r['Longitude'] || 0) * 100)
+  
+  return `${streetKey}_${numKey}_${lat}_${lon}`
 }
 
-export function transformRows(rows: InputRow[]): TransformResult {
-  const sequenced = rows.filter(
+
+
+async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false): Promise<{ lat: number; lng: number } | null> {
+  try {
+    const res = await fetch('/api/geocode', {
+      method: 'POST',
+      body: JSON.stringify({ address, city, forceRefresh }),
+      headers: { 'Content-Type': 'application/json' }
+    })
+    if (!res.ok) return null
+    const data = await res.json()
+    return { lat: data.lat, lng: data.lng }
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Calcula a distância entre dois pontos (Haversine) em km
+ */
+function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): number {
+  const R = 6371
+  const dLat = (lat2 - lat1) * Math.PI / 180
+  const dLon = (lon2 - lon1) * Math.PI / 180
+  const a = 
+    Math.sin(dLat/2) * Math.sin(dLat/2) +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * 
+    Math.sin(dLon/2) * Math.sin(dLon/2)
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
+  return R * c
+}
+
+export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
+  // Função auxiliar para construir o endereço completo para o Google
+  const getFullQuery = (r: InputRow) => {
+    const addr = String(r['Destination Address'] ?? '').trim()
+    const bairro = String(r['Bairro'] ?? '').trim()
+    const city = String(r['City'] ?? '').trim()
+    // Filtramos partes vazias e adicionamos "Brazil" para forçar o país
+    const parts = [addr, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    return parts.join(', ')
+  }
+
+  // 1. Identificar todas as queries únicas e frequências de coordenadas
+  const coordsFrequency = new Map<string, number>()
+  rows.forEach(r => {
+    const coordKey = `${r['Latitude']}_${r['Longitude']}`
+    if (r['Latitude'] && r['Longitude']) {
+      coordsFrequency.set(coordKey, (coordsFrequency.get(coordKey) || 0) + 1)
+    }
+  })
+
+  const queries = rows.map(r => ({
+    originalAddr: String(r['Destination Address'] ?? ''),
+    fullQuery: getFullQuery(r),
+    city: String(r['City'] ?? '').trim()
+  }))
+  
+  const queryToCity = new Map<string, string>()
+  queries.forEach(q => queryToCity.set(q.fullQuery, q.city))
+  
+  const uniqueQueries = Array.from(new Set(queries.map(q => q.fullQuery)))
+  
+  // 2. Buscar coordenadas para todas as queries únicas (em paralelo)
+  const coordsMap = new Map<string, { lat: number; lng: number }>()
+  await Promise.all(uniqueQueries.map(async (query) => {
+    const city = queryToCity.get(query)
+    
+    // Identificamos se qualquer linha associada a esta query tem coordenada compartilhada
+    const associatedRows = rows.filter(r => getFullQuery(r) === query)
+    const hasGenericSource = associatedRows.some(r => {
+      const coordKey = `${r['Latitude']}_${r['Longitude']}`
+      return (coordsFrequency.get(coordKey) || 0) > 1 // Mais de 1 rua na mesma coord = genérico
+    })
+
+    const coords = await fetchCoords(query, city, hasGenericSource)
+    if (coords) coordsMap.set(query, coords)
+  }))
+
+  // 3. Atualizar as linhas com as coordenadas obtidas + Blindagem Cirúrgica
+  const enrichedRows = rows.map(r => {
+    const query = getFullQuery(r)
+    const newCoords = coordsMap.get(query)
+    
+    if (newCoords) {
+      const oldLat = Number(r['Latitude'] || 0)
+      const oldLng = Number(r['Longitude'] || 0)
+
+      if (oldLat !== 0 && oldLng !== 0) {
+        const coordKey = `${r['Latitude']}_${r['Longitude']}`
+        const isGeneric = (coordsFrequency.get(coordKey) || 0) > 1
+        const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
+        
+        // Se a coordenada da planilha for genérica (muitas ruas na mesma coord),
+        // we trust the Google result more as it's street-specific.
+        if (isGeneric) {
+          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+        }
+
+        // Se NÃO for genérica, aplicamos a trava de 2km (margem de bairro)
+        if (dist > 2) {
+          console.warn(`Desvio excessivo (${dist.toFixed(2)}km) detectado. Mantendo original para Segurança.`)
+          return r
+        }
+      }
+
+      return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+    }
+    return r
+  })
+
+
+  const sequenced = enrichedRows.filter(
     (r) => r['Sequence'] !== '-' && r['Sequence'] != null && r['Stop'] !== '-'
   )
-  const unsequenced = rows.filter(
+  const unsequenced = enrichedRows.filter(
     (r) => r['Sequence'] === '-' || r['Stop'] === '-'
   )
 
@@ -226,3 +374,4 @@ export function transformRows(rows: InputRow[]): TransformResult {
 
   return { out, unsequencedCount: unsequenced.length }
 }
+
