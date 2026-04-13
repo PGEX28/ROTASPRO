@@ -337,24 +337,26 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     if (newCoords) {
       const oldLat = Number(r['Latitude'] || 0)
       const oldLng = Number(r['Longitude'] || 0)
-
-      if (oldLat !== 0 && oldLng !== 0) {
-        const coordKey = `${r['Latitude']}_${r['Longitude']}`
-        const isGeneric = (coordsFrequency.get(coordKey) || 0) > 1
+      
+      const isGeneric = oldLat === 0 && oldLng === 0
+      const newLat = newCoords.lat
+      const newLng = newCoords.lng
+      
+      // Se não for genérico, calculamos a distância para o Tira-Teima
+      if (!isGeneric) {
+        const dist = getDistance(oldLat, oldLng, newLat, newLng)
         const isRooftop = newCoords.location_type === 'ROOFTOP'
-        const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
-        const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
-        const searchStreetFull = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
-        const searchStreetBody = normalizeStreetBody(searchStreetFull)
-        
+        const googleAddr = (newCoords.formatted_address || '').toLowerCase()
+        const searchStreetBody = normalizeStreetBody(originalAddr)
+
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
         if (isGeneric) {
           // No caso genérico, se o "corpo" do nome bater, a gente aceita
           if (googleAddr.includes(searchStreetBody)) {
-            return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+            return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
           } else {
             console.warn(`Nome da rua não coincide (Genérico): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
-            return r
+            return updatedRow
           }
         }
 
@@ -365,16 +367,16 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         if (isRooftop && googleAddr.includes(searchStreetBody)) {
           if (dist > 2.0) {
             console.warn(`ROOFTOP muito distante (${dist.toFixed(2)}km). Proteção contra salto de bairro ativada.`)
-            return r
+            return updatedRow
           }
-          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
         }
 
         // 2. Confiança Limitada (Aproximado/Interpolado): Mantemos a trava de 500m
         // Mas usamos o corpo do nome (Fuzzy) para permitir correções de Rua vs Servidão
         if (dist > 0.5) {
           console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto aproximado. Usando Tira-Teima da Planilha.`)
-          return r // Mantém original
+          return updatedRow // Mantém original
         }
 
         if (googleAddr.includes(searchStreetBody)) {
