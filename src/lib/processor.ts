@@ -208,7 +208,8 @@ async function fetchCoords(address: string, city?: string, forceRefresh: boolean
     return { 
       lat: data.lat, 
       lng: data.lng,
-      formatted_address: data.formatted_address
+      formatted_address: data.formatted_address,
+      location_type: data.location_type
     }
   } catch {
     return null
@@ -228,6 +229,17 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): nu
     Math.sin(dLon/2) * Math.sin(dLon/2)
   const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
   return R * c
+}
+
+/**
+ * Normaliza o nome da rua para comparação (remove Rua, Servidão, etc)
+ */
+function normalizeStreetBody(name: string): string {
+  return name.toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/^(rua|servidao|srv|avenida|av|travessa|rodovia|rod|praca)\.?\s+/i, '')
+    .replace(/\s+/g, ' ')
+    .trim()
 }
 
 export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
@@ -263,7 +275,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   
   // 2. Buscar coordenadas para todas as queries únicas (em paralelo)
   // Usamos a primeira linha encontrada para cada query como âncora de coordenada
-  const coordsMap = new Map<string, { lat: number; lng: number; formatted_address?: string }>()
+  const coordsMap = new Map<string, { lat: number; lng: number; formatted_address?: string; location_type?: string }>()
   await Promise.all(uniqueQueries.map(async (query) => {
     const city = queryToCity.get(query)
     const associatedRows = rows.filter(r => getFullQuery(r) === query)
@@ -294,28 +306,44 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
       if (oldLat !== 0 && oldLng !== 0) {
         const coordKey = `${r['Latitude']}_${r['Longitude']}`
         const isGeneric = (coordsFrequency.get(coordKey) || 0) > 1
-        const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
+        const isRooftop = newCoords.location_type === 'ROOFTOP'
+        const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
+        const searchStreetFull = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
+        const searchStreetBody = normalizeStreetBody(searchStreetFull)
         
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
-        // MAS agora exigimos que o nome da rua seja compatível (Mandatório)
         if (isGeneric) {
-          const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
-          const searchStreet = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
-          
-          // Validação Nominativa Obrigatória: O Google achou a rua certa?
-          // Removido o bypass || dist < 10 que causava confusão entre ruas parecidas
-          if (googleAddr.includes(searchStreet)) {
+          // No caso genérico, se o "corpo" do nome bater, a gente aceita
+          if (googleAddr.includes(searchStreetBody)) {
             return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
           } else {
-            console.warn(`Nome da rua não coincide: ${searchStreet} vs ${googleAddr}. Rejeitando sugestão do Google.`)
+            console.warn(`Nome da rua não coincide (Genérico): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
+            return r
           }
         }
 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
-        // Aplicamos trava de 500m para desempate entre homônimos (Diferenciação Estrita)
+        // HIERARQUIA DE CONFIANÇA:
+        
+        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, aceitamos até 2km
+        if (isRooftop && googleAddr.includes(searchStreetBody)) {
+          if (dist > 2.0) {
+            console.warn(`ROOFTOP muito distante (${dist.toFixed(2)}km). Proteção contra salto de bairro ativada.`)
+            return r
+          }
+          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+        }
+
+        // 2. Confiança Limitada (Outros): Mantemos a trava rígida de 500m e nome exato
         if (dist > 0.5) {
           console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto específico. Usando Tira-Teima da Planilha.`)
           return r // Mantém original
+        }
+
+        // Validação de nome para resultados não-rooftop (Mais rígida)
+        if (!googleAddr.includes(searchStreetFull)) {
+            console.warn(`Nome exato não coincide em resultado aproximado. Rejeitando.`)
+            return r
         }
       }
 

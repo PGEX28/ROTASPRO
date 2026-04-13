@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!forceRefresh) {
       const { data: cacheEntry } = await supabase
         .from('geocoding_cache')
-        .select('lat, lng, full_address')
+        .select('lat, lng, full_address, location_type')
         .eq('address_hash', addressHash)
         .single()
 
@@ -35,6 +35,7 @@ export async function POST(req: NextRequest) {
           lat: cacheEntry.lat,
           lng: cacheEntry.lng,
           formatted_address: cacheEntry.full_address,
+          location_type: cacheEntry.location_type,
           source: 'cache'
         })
       }
@@ -68,12 +69,14 @@ export async function POST(req: NextRequest) {
     }
 
     const { lat, lng } = data.results[0].geometry.location
+    const locationType = data.results[0].geometry.location_type
     const formattedAddress = data.results[0].formatted_address
 
     // 4. Salvar no Cache
     await supabase.from('geocoding_cache').insert({
       address_hash: addressHash,
       full_address: formattedAddress,
+      location_type: locationType,
       lat,
       lng
     })
@@ -82,6 +85,7 @@ export async function POST(req: NextRequest) {
       lat,
       lng,
       formatted_address: formattedAddress,
+      location_type: locationType,
       source: 'google'
     })
 
