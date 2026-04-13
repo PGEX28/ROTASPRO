@@ -326,9 +326,9 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
         // HIERARQUIA DE CONFIANÇA:
         
-        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, aceitamos até 2km
+        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, aceitamos até 500m
         if (isRooftop && googleAddr.includes(searchStreetBody)) {
-          if (dist > 2.0) {
+          if (dist > 0.5) {
             console.warn(`ROOFTOP muito distante (${dist.toFixed(2)}km). Proteção contra salto de bairro ativada.`)
             return r
           }
