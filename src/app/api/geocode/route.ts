@@ -50,15 +50,12 @@ export async function POST(req: NextRequest) {
     
     // Ancoragem (Location Bias): Se tivermos coordenadas da planilha, usamos como centro de busca
     if (hintLat && hintLng) {
-      // Usamos 500m para dar mais margem de busca ao Google (Equilíbrio de Confiança)
-      googleUrl += `&locationbias=circle:500@${hintLat},${hintLng}`
+      // Ampliamos para 15km para garantir que o Google encontre o ponto oficial, mesmo de longe
+      googleUrl += `&locationbias=circle:15000@${hintLat},${hintLng}`
     }
 
-    // Adiciona filtros de componentes para travar o resultado no Brasil e na cidade se fornecida
+    // Adiciona filtros de componentes: Apenas país (para não travar em divisa de cidade)
     let components = 'country:BR'
-    if (city) {
-      components += `|locality:${city}`
-    }
     googleUrl += `&components=${encodeURIComponent(components)}`
 
     const response = await fetch(googleUrl)

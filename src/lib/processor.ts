@@ -336,11 +336,11 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
     const info = cepMap.get(cep)
     
-    const bairro = info?.bairro || String(r['Bairro'] ?? '').trim()
     const city = info?.localidade || String(r['City'] ?? '').trim()
-    const state = info?.uf || ''
+    const state = info?.uf || r['State'] || ''
     
-    const parts = [addrClean, bairro, city, state, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    // Omitimos o Bairro propositalmente para evitar conflitos de nomenclatura entre ViaCEP e Google
+    const parts = [addrClean, city, state, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
 
