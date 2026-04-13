@@ -387,6 +387,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
 
   // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
   let enrichedRows = rows.map(r => {
+    const originalAddr = String(r['Destination Address'] ?? '').trim()
     const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
     const info = cepMap.get(cep)
     
