@@ -242,14 +242,43 @@ function normalizeStreetBody(name: string): string {
     .trim()
 }
 
+/**
+ * Padroniza o endereço para um formato limpo que o Google Maps entende melhor
+ * Ex: "SRV JOAO 123 CASA" -> "Servidão João, 123"
+ */
+function standardizeAddress(address: string): string {
+  let clean = address.trim()
+    // 1. Padronizar Prefixos
+    .replace(/^srv\.?\s+/i, 'Servidão ')
+    .replace(/^r\.?\s+/i, 'Rua ')
+    .replace(/^av\.?\s+/i, 'Avenida ')
+    .replace(/^rod\.?\s+/i, 'Rodovia ')
+    .replace(/^trav\.?\s+/i, 'Travessa ')
+    
+    // 2. Limpeza de ruídos e formatação de número
+    .replace(/\s+n[:º°]?\s*(\d+)/i, ', $1') // " n: 123" -> ", 123"
+    .replace(/,\s+/g, ', ') // Padroniza vírgula existente
+
+  // Se não houver vírgula mas houver um número no final, adiciona a vírgula
+  if (!clean.includes(',') && /[a-z\s]+\s+\d+/i.test(clean)) {
+    clean = clean.replace(/([a-z\s]+)\s+(\d+.*)$/i, '$1, $2')
+  }
+
+  // Remove complementos que podem confundir o geocodificador (focamos no Ponto exato)
+  clean = clean.replace(/,\s*(\d+)\s*(casa|fundo|frente|ap|bloco|sala|loja).*/i, ', $1')
+    
+  return clean
+}
+
 export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
   // Função auxiliar para construir o endereço completo para o Google
   const getFullQuery = (r: InputRow) => {
-    const addr = String(r['Destination Address'] ?? '').trim()
+    const addrOriginal = String(r['Destination Address'] ?? '').trim()
+    const addrClean = standardizeAddress(addrOriginal)
     const bairro = String(r['Bairro'] ?? '').trim()
     const city = String(r['City'] ?? '').trim()
     // Filtramos partes vazias e adicionamos "Brazil" para forçar o país
-    const parts = [addr, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
+    const parts = [addrClean, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
 
@@ -296,6 +325,12 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
 
   // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
   const enrichedRows = rows.map(r => {
+    const originalAddr = String(r['Destination Address'] ?? '').trim()
+    const standardAddr = standardizeAddress(originalAddr)
+    
+    // Atualizamos o endereço base para o formato padrão na planilha final
+    const updatedRow = { ...r, 'Destination Address': standardAddr }
+    
     const query = getFullQuery(r)
     const newCoords = coordsMap.get(query)
     
@@ -343,16 +378,16 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         }
 
         if (googleAddr.includes(searchStreetBody)) {
-          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
         } else {
           console.warn(`Nome da rua não coincide (Corpo): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
-          return r
+          return updatedRow
         }
       }
 
-      return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+      return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng }
     }
-    return r
+    return updatedRow
   })
 
 
