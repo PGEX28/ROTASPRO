@@ -196,7 +196,7 @@ function getGroupingKey(r: InputRow): string {
 
 
 
-async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number; formatted_address?: string } | null> {
+async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number; formatted_address?: string; location_type?: string } | null> {
   try {
     const res = await fetch('/api/geocode', {
       method: 'POST',
