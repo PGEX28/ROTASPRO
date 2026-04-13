@@ -7,17 +7,19 @@ const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
 
 export async function POST(req: NextRequest) {
   try {
-    const { address, city, forceRefresh } = await req.json()
+    const { address, city, forceRefresh, lat: hintLat, lng: hintLng } = await req.json()
 
     if (!address) {
       return NextResponse.json({ error: 'Endereço não fornecido' }, { status: 400 })
     }
 
     // 1. Normalização básica para o Hash
-    const normalized = address.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    // Incluímos cidade no hash para diferenciar ruas homônimas
+    const hintPart = (hintLat && hintLng) ? `_${Math.round(hintLat * 100)}_${Math.round(hintLng * 100)}` : ''
+    const normalized = `${address}_${city || ''}${hintPart}`.toLowerCase().trim().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     const addressHash = Buffer.from(normalized).toString('base64')
 
-    // Inicializa Supabase com Service Role para bypass RLS se necessário (mais seguro em ambiente de servidor)
+    // Inicializa Supabase com Service Role para bypass RLS
     const supabase = createClient(SUPABASE_URL!, SUPABASE_SERVICE_ROLE_KEY!)
 
     // 2. Verificar Cache no Supabase (Pular se forceRefresh for true)
@@ -45,6 +47,11 @@ export async function POST(req: NextRequest) {
 
     let googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`
     
+    // Ancoragem (Location Bias): Se tivermos coordenadas da planilha, usamos como centro de busca
+    if (hintLat && hintLng) {
+      googleUrl += `&locationbias=circle:1000@${hintLat},${hintLng}`
+    }
+
     // Adiciona filtros de componentes para travar o resultado no Brasil e na cidade se fornecida
     let components = 'country:BR'
     if (city) {

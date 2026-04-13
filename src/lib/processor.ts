@@ -170,11 +170,11 @@ function getGroupingKey(r: InputRow): string {
 
 
 
-async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false): Promise<{ lat: number; lng: number } | null> {
+async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number } | null> {
   try {
     const res = await fetch('/api/geocode', {
       method: 'POST',
-      body: JSON.stringify({ address, city, forceRefresh }),
+      body: JSON.stringify({ address, city, forceRefresh, lat, lng }),
       headers: { 'Content-Type': 'application/json' }
     })
     if (!res.ok) return null
@@ -232,74 +232,27 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   const uniqueQueries = Array.from(new Set(queries.map(q => q.fullQuery)))
   
   // 2. Buscar coordenadas para todas as queries únicas (em paralelo)
+  // Usamos a primeira linha encontrada para cada query como âncora de coordenada
   const coordsMap = new Map<string, { lat: number; lng: number }>()
   await Promise.all(uniqueQueries.map(async (query) => {
     const city = queryToCity.get(query)
-    
-    // Identificamos se qualquer linha associada a esta query tem coordenada compartilhada
     const associatedRows = rows.filter(r => getFullQuery(r) === query)
+    const firstRow = associatedRows[0]
+
+    // Identificamos se qualquer linha associada a esta query tem coordenada compartilhada
     const hasGenericSource = associatedRows.some(r => {
       const coordKey = `${r['Latitude']}_${r['Longitude']}`
       return (coordsFrequency.get(coordKey) || 0) > 1 // Mais de 1 rua na mesma coord = genérico
     })
 
-    const coords = await fetchCoords(query, city, hasGenericSource)
+    const lat = Number(firstRow?.['Latitude'] || 0)
+    const lng = Number(firstRow?.['Longitude'] || 0)
+
+    const coords = await fetchCoords(query, city, hasGenericSource, lat !== 0 ? lat : undefined, lng !== 0 ? lng : undefined)
     if (coords) coordsMap.set(query, coords)
   }))
 
-  // 3. Cálculo de Centroides por Bairro (para detecção de Outliers)
-  const neighborhoodCentroids = new Map<string, { lat: number; lng: number }>()
-  const neighborhoodPoints = new Map<string, { lat: number; lng: number }[]>()
-
-  uniqueQueries.forEach(query => {
-    const coords = coordsMap.get(query)
-    const neighborhood = queries.find(q => q.fullQuery === query)?.city // Usamos a cidade/bairro da query
-    const rowsForQuery = rows.filter(r => getFullQuery(r) === query)
-    const neighborhoodKey = String(rowsForQuery[0]?.['Bairro'] || 'Desconhecido')
-
-    if (coords) {
-      if (!neighborhoodPoints.has(neighborhoodKey)) neighborhoodPoints.set(neighborhoodKey, [])
-      neighborhoodPoints.get(neighborhoodKey)?.push(coords)
-    }
-  })
-
-  neighborhoodPoints.forEach((points, neighborhood) => {
-    const avgLat = points.reduce((s, p) => s + p.lat, 0) / points.length
-    const avgLng = points.reduce((s, p) => s + p.lng, 0) / points.length
-    neighborhoodCentroids.set(neighborhood, { lat: avgLat, lng: avgLng })
-  })
-
-  // 4. Detecção de Outliers e Refinamento
-  // Se uma parada está a > 5km do centroide do seu bairro, tentamos re-geocodificar sem o Bairro na query
-  await Promise.all(uniqueQueries.map(async (query) => {
-    const coords = coordsMap.get(query)
-    if (!coords) return
-
-    const rowsForQuery = rows.filter(r => getFullQuery(r) === query)
-    const neighborhoodKey = String(rowsForQuery[0]?.['Bairro'] || 'Desconhecido')
-    const centroid = neighborhoodCentroids.get(neighborhoodKey)
-
-    if (centroid) {
-      const distToCentroid = getDistance(centroid.lat, centroid.lng, coords.lat, coords.lng)
-      
-      // Se estiver muito longe do "centro do bairro", o nome do bairro pode estar poluindo a busca
-      if (distToCentroid > 5) {
-        console.warn(`Outlier detectado (${distToCentroid.toFixed(2)}km) para: ${query}. Refinando busca sem bairro...`)
-        
-        // Tentamos geocodificar apenas Rua + Cidade
-        const cleanAddr = String(rowsForQuery[0]?.['Destination Address'] || '')
-        const city = String(rowsForQuery[0]?.['City'] || '').trim()
-        const refinedQuery = `${cleanAddr}, ${city}, Brazil`
-        
-        const refinedCoords = await fetchCoords(refinedQuery, city, true)
-        if (refinedCoords) {
-          coordsMap.set(query, refinedCoords)
-        }
-      }
-    }
-  }))
-
-  // 5. Atualizar as linhas com as coordenadas obtidas + Blindagem Cirúrgica
+  // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
   const enrichedRows = rows.map(r => {
     const query = getFullQuery(r)
     const newCoords = coordsMap.get(query)
@@ -313,16 +266,16 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         const isGeneric = (coordsFrequency.get(coordKey) || 0) > 1
         const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
         
-        // Se a coordenada da planilha for genérica (muitas ruas na mesma coord),
-        // we trust the Google result more as it's street-specific.
+        // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
         if (isGeneric) {
           return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
         }
 
-        // Se NÃO for genérica, aplicamos a trava de 2km (margem de bairro)
-        if (dist > 2) {
-          console.warn(`Desvio excessivo (${dist.toFixed(2)}km) detectado. Mantendo original para Segurança.`)
-          return r
+        // Se NÃO for genérica, a planilha é o NORTE (Âncora)
+        // Aplicamos trava estrita de 500m para evitar saltos de bairro (Itacorubi, etc)
+        if (dist > 0.5) {
+          console.warn(`Salto de bairro detectado (${dist.toFixed(2)}km). Rejeitando Google e mantendo Norte da Planilha.`)
+          return r // Mantém original
         }
       }
 
