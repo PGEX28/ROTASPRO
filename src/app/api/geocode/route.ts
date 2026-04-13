@@ -49,7 +49,8 @@ export async function POST(req: NextRequest) {
     
     // Ancoragem (Location Bias): Se tivermos coordenadas da planilha, usamos como centro de busca
     if (hintLat && hintLng) {
-      googleUrl += `&locationbias=circle:1000@${hintLat},${hintLng}`
+      // Usamos 150m para criar uma "Confluência" exata com a trava de segurança
+      googleUrl += `&locationbias=circle:150@${hintLat},${hintLng}`
     }
 
     // Adiciona filtros de componentes para travar o resultado no Brasil e na cidade se fornecida
