@@ -386,6 +386,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   }))
 
   // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
+  // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
   let enrichedRows = rows.map(r => {
     const originalAddr = String(r['Destination Address'] ?? '').trim()
     const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
@@ -393,8 +394,8 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     
     const standardAddr = getCorrectedAddr(r)
     
-    // Atualizamos o endereço base para o formato oficial + Bairro/Cidade do CEP
-    const updatedRow = { 
+    // Endereço base atualizado (Logradouro oficial + Número)
+    let updatedRow = { 
       ...r, 
       'Destination Address': standardAddr,
       'Bairro': info?.bairro || r['Bairro'],
@@ -408,60 +409,47 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
       const oldLat = Number(r['Latitude'] || 0)
       const oldLng = Number(r['Longitude'] || 0)
       
-      const isGeneric = oldLat === 0 && oldLng === 0
+      const coordKey = `${oldLat}_${oldLng}`
+      const freq = coordsFrequency.get(coordKey) || 0
+      
+      // Coordenada é genérica se for 0,0 ou se for compartilhada por vários endereços (ponto central)
+      const isGeneric = (oldLat === 0 && oldLng === 0) || freq > 1
+      
       const newLat = newCoords.lat
       const newLng = newCoords.lng
-      
-      // Se não for genérico, calculamos a distância para o Tira-Teima
-      if (!isGeneric) {
-        const dist = getDistance(oldLat, oldLng, newLat, newLng)
-        const isRooftop = newCoords.location_type === 'ROOFTOP'
-        const googleAddr = (newCoords.formatted_address || '').toLowerCase()
-        const searchStreetBody = normalizeStreetBody(originalAddr)
-
-        // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
-        if (isGeneric) {
-          // No caso genérico, se o "corpo" do nome bater, a gente aceita
-          if (googleAddr.includes(searchStreetBody)) {
-            return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
-          } else {
-            console.warn(`Nome da rua não coincide (Genérico): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
-            return updatedRow
-          }
-        }
-
-        // Se NÃO for genérica, a planilha é o NORTE (Âncora)
-        // HIERARQUIA DE CONFIANÇA:
-        
-        // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, o Google é o CHEFE.
-        // Revertido para 500m (0.5km) conforme solicitação do usuário para precisão cirúrgica local.
-        if (isRooftop && googleAddr.includes(searchStreetBody)) {
-          if (dist > 0.5) {
-            console.warn(`ROOFTOP fora do raio de confiança local (${dist.toFixed(2)}km). Mantendo original.`)
-            return updatedRow
-          }
-          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
-        }
-
-        // 2. Confiança Limitada (Aproximado/Interpolado): Aumentamos para 2km
-        if (dist > 2.0) {
-          console.warn(`Desvio muito grande (${dist.toFixed(2)}km) em ponto aproximado. Mantendo original por segurança.`)
-          return updatedRow 
-        }
-
-        if (googleAddr.includes(searchStreetBody)) {
-          return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
-        } else {
-          console.warn(`Nome da rua não coincide (Corpo): ${searchStreetBody} vs ${googleAddr}. Rejeitando.`)
-          return updatedRow
-        }
-      }
-
-      // Se for genérico (0,0) ou não tiver trava, aceita direto se o nome bater
+      const dist = getDistance(oldLat, oldLng, newLat, newLng)
+      const isRooftop = newCoords.location_type === 'ROOFTOP'
       const googleAddr = (newCoords.formatted_address || '').toLowerCase()
       const searchStreetBody = normalizeStreetBody(originalAddr)
-      if (googleAddr.includes(searchStreetBody)) {
-        return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
+
+      // HIERARQUIA DE CONFIANÇA (Cuidado Cirúrgico):
+
+      // CASO A: Coordenada Genérica na Planilha (Placeholder / Centro da Cidade / Bairro)
+      if (isGeneric) {
+        // No caso genérico, confiamos no ponto do Google se o nome da rua bater minimamente
+        if (googleAddr.includes(searchStreetBody)) {
+          updatedRow.Latitude = newLat
+          updatedRow.Longitude = newLng
+        } else {
+          console.warn(`Genérico rejeitado: Nome da rua não coincide. (${searchStreetBody} vs ${googleAddr})`)
+        }
+      } 
+      // CASO B: Coordenada Específica na Planilha (Âncora Real)
+      else {
+        // 1. Confiança Total: ROOFTOP + Nome Bate + Distância até 500m
+        if (isRooftop && googleAddr.includes(searchStreetBody)) {
+          if (dist <= 0.5) {
+            updatedRow.Latitude = newLat
+            updatedRow.Longitude = newLng
+          } else {
+            console.warn(`ROOFTOP ignorado: Ponto a ${dist.toFixed(2)}km de distância em coordenada específica.`)
+          }
+        }
+        // 2. Confiança Média: Nome Bate + Distância até 2km
+        else if (googleAddr.includes(searchStreetBody) && dist <= 2.0) {
+          updatedRow.Latitude = newLat
+          updatedRow.Longitude = newLng
+        }
       }
     }
     return updatedRow
