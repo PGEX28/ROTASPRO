@@ -307,6 +307,7 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         const coordKey = `${r['Latitude']}_${r['Longitude']}`
         const isGeneric = (coordsFrequency.get(coordKey) || 0) > 1
         const isRooftop = newCoords.location_type === 'ROOFTOP'
+        const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
         const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
         const searchStreetFull = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
         const searchStreetBody = normalizeStreetBody(searchStreetFull)
