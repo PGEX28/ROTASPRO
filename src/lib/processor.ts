@@ -312,8 +312,8 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         }
 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
-        // Aplicamos trava de 150m para desempate entre homônimos (Diferenciação Estrita)
-        if (dist > 0.15) {
+        // Aplicamos trava de 50m para desempate entre homônimos (Diferenciação Estrita)
+        if (dist > 0.05) {
           console.warn(`Desvio detectado (${dist.toFixed(2)}km) em ponto específico. Usando Tira-Teima da Planilha.`)
           return r // Mantém original
         }
