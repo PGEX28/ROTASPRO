@@ -267,14 +267,22 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
         
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
+        // Aumentamos a margem para 10km para permitir saídas da Caiacanga -> Alto Ribeirão
         if (isGeneric) {
-          return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
+          const searchStreet = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
+          
+          // Validação extra: O Google achou a rua certa?
+          // Se o nome da rua não estiver no resultado do Google, mantemos o original por segurança
+          if (googleAddr.includes(searchStreet) || dist < 10) {
+            return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          }
         }
 
         // Se NÃO for genérica, a planilha é o NORTE (Âncora)
-        // Aplicamos trava estrita de 500m para evitar saltos de bairro (Itacorubi, etc)
-        if (dist > 0.5) {
-          console.warn(`Salto de bairro detectado (${dist.toFixed(2)}km). Rejeitando Google e mantendo Norte da Planilha.`)
+        // Aplicamos trava de 2km para segurança em pontos específicos
+        if (dist > 2) {
+          console.warn(`Salto de bairro detectado (${dist.toFixed(2)}km) em ponto específico. Mantendo Norte da Planilha.`)
           return r // Mantém original
         }
       }
