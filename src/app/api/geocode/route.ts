@@ -46,27 +46,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Google Maps API Key não configurada' }, { status: 500 })
     }
 
-    let googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`
+    // 3. Função de busca no Google
+    async function performSearch(biasLat?: number, biasLng?: number) {
+      let googleUrl = `https://maps.googleapis.com/maps/api/geocode/json?address=${encodeURIComponent(address)}&key=${GOOGLE_MAPS_API_KEY}&region=br&language=pt-BR`
+      
+      if (biasLat && biasLng) {
+        googleUrl += `&locationbias=circle:500@${biasLat},${biasLng}`
+      }
+
+      const components = 'country:BR'
+      googleUrl += `&components=${encodeURIComponent(components)}`
+
+      const response = await fetch(googleUrl)
+      return await response.json()
+    }
+
+    // TENTATIVA 1: Busca Local (com âncora de 500m)
+    let searchData = await performSearch(hintLat, hintLng)
     
-    // Ancoragem (Location Bias): Se tivermos coordenadas da planilha, usamos como centro de busca
-    if (hintLat && hintLng) {
-      // Ampliamos para 15km para garantir que o Google encontre o ponto oficial, mesmo de longe
-      googleUrl += `&locationbias=circle:15000@${hintLat},${hintLng}`
+    if (searchData.status === 'OVER_QUERY_LIMIT') {
+      return NextResponse.json({ error: 'Limite de cota do Google Maps excedido' }, { status: 429 })
     }
 
-    // Adiciona filtros de componentes: Apenas país (para não travar em divisa de cidade)
-    let components = 'country:BR'
-    googleUrl += `&components=${encodeURIComponent(components)}`
+    // Busca inteligente: Priorizar ROOFTOP na primeira tentativa
+    let bestResult = (searchData.results || []).find((r: any) => r.geometry.location_type === 'ROOFTOP')
 
-    const response = await fetch(googleUrl)
-    const data = await response.json()
-
-    if (data.status !== 'OK' || !data.results[0]) {
-      return NextResponse.json({ error: 'Endereço não encontrado no Google Maps', status: data.status }, { status: 404 })
+    // TENTATIVA 2: Busca Global (sem âncora) se não achou ROOFTOP na primeira
+    // Isso resolve o problema de coordenadas originais muito erradas
+    if (!bestResult && hintLat && hintLng) {
+      const globalData = await performSearch()
+      const globalRooftop = (globalData.results || []).find((r: any) => r.geometry.location_type === 'ROOFTOP')
+      
+      if (globalRooftop) {
+        bestResult = globalRooftop
+      }
     }
 
-    // Busca inteligente: Priorizar ROOFTOP se existir em qualquer um dos resultados retornados
-    const bestResult = data.results.find((r: any) => r.geometry.location_type === 'ROOFTOP') || data.results[0]
+    // Fallback: se nenhuma busca achou ROOFTOP, usamos o primeiro resultado da busca local
+    if (!bestResult) {
+      bestResult = searchData.results?.[0]
+    }
+
+    if (!bestResult) {
+      return NextResponse.json({ error: 'Endereço não encontrado no Google Maps', status: searchData.status }, { status: 404 })
+    }
 
     const { lat, lng } = bestResult.geometry.location
     const locationType = bestResult.geometry.location_type

@@ -434,10 +434,10 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         // HIERARQUIA DE CONFIANÇA:
         
         // 1. Confiança Total (ROOFTOP): Se o Google achou a casa exata e o nome bate, o Google é o CHEFE.
-        // Aumentamos para 15km para permitir correções de locais muito errados na planilha.
+        // Revertido para 500m (0.5km) conforme solicitação do usuário para precisão cirúrgica local.
         if (isRooftop && googleAddr.includes(searchStreetBody)) {
-          if (dist > 15.0) {
-            console.warn(`ROOFTOP extremamente distante (${dist.toFixed(2)}km). Proteção contra erro em outra cidade ativada.`)
+          if (dist > 0.5) {
+            console.warn(`ROOFTOP fora do raio de confiança local (${dist.toFixed(2)}km). Mantendo original.`)
             return updatedRow
           }
           return { ...updatedRow, Latitude: newCoords.lat, Longitude: newCoords.lng } as InputRow
