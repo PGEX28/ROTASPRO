@@ -243,6 +243,28 @@ function normalizeStreetBody(name: string): string {
 }
 
 /**
+ * Busca informações oficiais do CEP na API ViaCEP
+ */
+async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string } | null> {
+  const cleanCep = String(cep || '').replace(/\D/g, '')
+  if (cleanCep.length !== 8) return null
+  
+  try {
+    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
+    if (!res.ok) return null
+    const data = await res.json()
+    if (data.erro) return null
+    return {
+      logradouro: data.logradouro,
+      bairro: data.bairro,
+      localidade: data.localidade
+    }
+  } catch {
+    return null
+  }
+}
+
+/**
  * Padroniza o endereço para um formato limpo que o Google Maps entende melhor
  * Ex: "SRV JOAO 123 CASA" -> "Servidão João, 123"
  */
@@ -271,13 +293,41 @@ function standardizeAddress(address: string): string {
 }
 
 export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
+  // 0. Pré-processamento de CEPs
+  const uniqueCeps = Array.from(new Set(rows.map(r => String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')).filter(c => c.length === 8)))
+  const cepMap = new Map<string, { logradouro: string; bairro: string; localidade: string }>()
+  
+  await Promise.all(uniqueCeps.map(async (cep) => {
+    const info = await fetchCepInfo(cep)
+    if (info) cepMap.set(cep, info)
+  }))
+
+  /**
+   * Tenta corrigir o endereço usando os dados do CEP
+   */
+  const getCorrectedAddr = (r: InputRow) => {
+    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    const info = cepMap.get(cep)
+    const originalAddr = String(r['Destination Address'] ?? '').trim()
+    
+    if (info && info.logradouro) {
+      // Extrair o número do endereço original (procurando padrão ", 123" ou " 123" no final)
+      const numMatch = originalAddr.match(/(?:,|\s+)(\d+)\s*$/) || originalAddr.match(/(\d+)/)
+      const num = numMatch ? numMatch[1] : ''
+      return `${info.logradouro}${num ? ', ' + num : ''}`
+    }
+    return standardizeAddress(originalAddr)
+  }
+
   // Função auxiliar para construir o endereço completo para o Google
   const getFullQuery = (r: InputRow) => {
-    const addrOriginal = String(r['Destination Address'] ?? '').trim()
-    const addrClean = standardizeAddress(addrOriginal)
-    const bairro = String(r['Bairro'] ?? '').trim()
-    const city = String(r['City'] ?? '').trim()
-    // Filtramos partes vazias e adicionamos "Brazil" para forçar o país
+    const addrClean = getCorrectedAddr(r)
+    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    const info = cepMap.get(cep)
+    
+    const bairro = info?.bairro || String(r['Bairro'] ?? '').trim()
+    const city = info?.localidade || String(r['City'] ?? '').trim()
+    
     const parts = [addrClean, bairro, city, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
     return parts.join(', ')
   }
@@ -324,12 +374,19 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
   }))
 
   // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
-  const enrichedRows = rows.map(r => {
-    const originalAddr = String(r['Destination Address'] ?? '').trim()
-    const standardAddr = standardizeAddress(originalAddr)
+  let enrichedRows = rows.map(r => {
+    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    const info = cepMap.get(cep)
     
-    // Atualizamos o endereço base para o formato padrão na planilha final
-    const updatedRow = { ...r, 'Destination Address': standardAddr } as InputRow
+    const standardAddr = getCorrectedAddr(r)
+    
+    // Atualizamos o endereço base para o formato oficial + Bairro/Cidade do CEP
+    const updatedRow = { 
+      ...r, 
+      'Destination Address': standardAddr,
+      'Bairro': info?.bairro || r['Bairro'],
+      'City': info?.localidade || r['City']
+    } as InputRow
     
     const query = getFullQuery(r)
     const newCoords = coordsMap.get(query)
@@ -395,6 +452,13 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
       }
     }
     return updatedRow
+  })
+
+  // 4. Ordenar a planilha final por CEP (Organização de Logística)
+  enrichedRows.sort((a, b) => {
+    const cepA = String(a['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    const cepB = String(b['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    return cepA.localeCompare(cepB)
   })
 
 
