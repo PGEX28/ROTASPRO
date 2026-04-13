@@ -297,14 +297,17 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
         const dist = getDistance(oldLat, oldLng, newCoords.lat, newCoords.lng)
         
         // Se a coordenada da planilha for genérica, confiamos no Google para achar a rua
-        // Aumentamos a margem para 10km para permitir saídas da Caiacanga -> Alto Ribeirão
+        // MAS agora exigimos que o nome da rua seja compatível (Mandatório)
         if (isGeneric) {
           const googleAddr = String(newCoords.formatted_address || '').toLowerCase()
           const searchStreet = String(r['Destination Address'] || '').split(',')[0].toLowerCase().trim()
           
-          // Validação extra: O Google achou a rua certa?
-          if (googleAddr.includes(searchStreet) || dist < 10) {
+          // Validação Nominativa Obrigatória: O Google achou a rua certa?
+          // Removido o bypass || dist < 10 que causava confusão entre ruas parecidas
+          if (googleAddr.includes(searchStreet)) {
             return { ...r, Latitude: newCoords.lat, Longitude: newCoords.lng }
+          } else {
+            console.warn(`Nome da rua não coincide: ${searchStreet} vs ${googleAddr}. Rejeitando sugestão do Google.`)
           }
         }
 
