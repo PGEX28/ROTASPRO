@@ -426,6 +426,9 @@ export async function transformRows(
     const freq = coordsFrequency.get(coordKey) || 0
     const isGeneric = (oldLat === 0 && oldLng === 0) || freq > 1
 
+    const [ , origLine2] = splitAddr(originalAddr)
+    updatedRow['Address Line 2'] = origLine2 || ''
+
     const houseNum = extractHouseNumber(originalAddr)
     
     // --- BUSCA CIRÚRGICA (Sincronização de Endereço/Coordenada) ---
@@ -636,7 +639,8 @@ export async function transformRows(
   // 3. Processar Grupos Manuais puros
   unseqOrder.forEach((key) => {
     const g = unseqGroups.get(key)!
-    const [base, line2] = splitAddr(String(g.first['Destination Address'] ?? ''))
+    const originalLine2 = String(g.first['Address Line 2'] ?? '')
+    const [base] = splitAddr(String(g.first['Destination Address'] ?? ''))
     out.push({
       'AT ID': (g.first['AT ID'] as string | number) ?? '',
       'Destination Address': expandAddress(base),
@@ -645,7 +649,7 @@ export async function transformRows(
       'Zipcode/Postal code': String(g.first['Zipcode/Postal code'] ?? ''),
       'Latitude': (g.first['Latitude'] as string | number) ?? '0',
       'Longitude': (g.first['Longitude'] as string | number) ?? '0',
-      'Address Line 2': String(line2 || ''),
+      'Address Line 2': originalLine2,
       'Pacotes na Parada': g.labels.join(', '),
     })
   })
@@ -656,7 +660,7 @@ export async function transformRows(
     .forEach((key) => {
       const g = groups.get(key)!
       const f = g.first
-      const [, line2] = splitAddr(String(g.rows[0]['Destination Address'] ?? ''))
+      const originalLine2 = String(f['Address Line 2'] ?? '')
       const seqNums = g.rows.map((r) => String(r['Sequence']))
       const allNums = [...seqNums, ...g.unseqLabels].join(', ')
       out.push({
@@ -667,7 +671,7 @@ export async function transformRows(
         'Zipcode/Postal code': String(f['Zipcode/Postal code'] ?? ''),
         'Latitude': (f['Latitude'] as string | number) ?? '0',
         'Longitude': (f['Longitude'] as string | number) ?? '0',
-        'Address Line 2': String(line2 || ''),
+        'Address Line 2': originalLine2,
         'Pacotes na Parada': allNums,
       })
     })
