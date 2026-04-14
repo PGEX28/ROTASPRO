@@ -507,27 +507,8 @@ export async function transformRows(
            updatedRow['Destination Address'] = originalAddr
         }
 
-        // LÓGICA DE METADADOS CONSERVADORA (NÃO ALTERAR CASO SEJA VÁLIDO)
-        const normZ = (z: string) => (z || '').replace(/\D/g, '')
-        const origZ = normZ(originalZip)
-        const foundZ = normZ(newCoords.postal_code || '')
-        
-        // Se o CEP original for válido (8 dígitos) e pertencer à mesma zona, mantemos o original
-        const keepOriginalZip = origZ.length === 8 && foundZ.startsWith(origZ.substring(0, 5))
-        
-        if (newCoords.neighborhood) {
-          // Mantém o bairro original se estiver dentro do limite de 150m e não estiver vazio
-          const keepOriginalBairro = originalBairro && dist <= 0.15
-          if (!keepOriginalBairro) {
-            updatedRow['Bairro'] = newCoords.neighborhood
-          }
-        }
-        
-        if (newCoords.city) updatedRow['City'] = newCoords.city
-        
-        if (newCoords.postal_code && !keepOriginalZip) {
-          updatedRow['Zipcode/Postal code'] = newCoords.postal_code
-        }
+        // LÓGICA DE METADADOS: FIDELIDADE TOTAL (V5.1)
+        // Mantemos Bairro, City e CEP originais conforme exigência do usuário.
         
         console.log(`Mirror Mode: ${originalAddr} -> ${updatedRow['Destination Address']} (${newCoords.location_type})`)
       } 
@@ -538,9 +519,8 @@ export async function transformRows(
     }
     // SINALIZAÇÃO PARA A UI (MODO ESPELHO)
     if (onRowProcessed) {
-      const norm = (s: string) => (s || '').replace(/\D/g, '')
-      const bChanged = !!(newCoords && newCoords.neighborhood && newCoords.neighborhood !== originalBairro)
-      const zChanged = !!(newCoords && newCoords.postal_code && norm(newCoords.postal_code) !== norm(originalZip))
+      const bChanged = false
+      const zChanged = false
       const cChanged = !!(newCoords && (Math.abs(newLat - oldLat) > 0.0001 || Math.abs(newLng - oldLng) > 0.0001))
       const aChanged = !!(newCoords && updatedRow['Destination Address'] !== originalAddr)
 
