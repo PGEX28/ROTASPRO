@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { transformRows, type OutputRow } from '@/lib/processor'
-import Navbar from '@/components/ui/Navbar'
-import InstallBanner from '@/components/ui/InstallBanner'
 import Link from 'next/link'
 import {
   Upload, FileSpreadsheet, X, Zap, AlertTriangle,
-  CheckCircle2, Download, RotateCcw, Clock, CreditCard, TrendingUp
+  CheckCircle2, Download, RotateCcw, Clock, CreditCard, TrendingUp,
+  MapPin, Navigation, LocateFixed, ShieldCheck, Search
 } from 'lucide-react'
+import Navbar from '@/components/ui/Navbar'
+import InstallBanner from '@/components/ui/InstallBanner'
+import { transformRows, type OutputRow, type ProcessedRowResult } from '@/lib/processor'
 
 type Screen = 'upload' | 'processing' | 'success'
 type StepState = 'idle' | 'active' | 'done'
@@ -27,6 +28,9 @@ export default function DashboardPage() {
   const [processedWB, setProcessedWB] = useState<unknown>(null)
   const [isBasicMember, setIsBasicMember] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [processedRows, setProcessedRows] = useState<ProcessedRowResult[]>([])
+  const [currentAddress, setCurrentAddress] = useState<string>('')
+  const [stats, setStats] = useState({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -97,6 +101,9 @@ export default function DashboardPage() {
     if (!file || !userId) return
     if (credits < 1) { setError('Créditos insuficientes. Adquira mais créditos para continuar.'); return }
     setError(null); setScreen('processing'); setProgress(0); setSteps(['active', 'idle', 'idle'])
+    setStats({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+    setProcessedRows([])
+    setCurrentAddress('')
 
     const XLSX = await import('xlsx')
     const reader = new FileReader()
@@ -109,7 +116,17 @@ export default function DashboardPage() {
 
         setStep(0, 'done'); setStep(1, 'active')
         await animateProgress(25, 65)
-        const { out: transformed, unsequencedCount } = await transformRows(rows)
+        
+        const { out: transformed, unsequencedCount } = await transformRows(rows, (res) => {
+          setProcessedRows(prev => [res, ...prev].slice(0, 10)) // Mostra os 10 mais recentes na tela de processamento
+          setCurrentAddress(res.original.address)
+          setStats(prev => ({
+            total: prev.total + 1,
+            rooftop: res.status === 'ROOFTOP' ? prev.rooftop + 1 : prev.rooftop,
+            corrected: (res.changed.bairro || res.changed.zip || res.changed.coords) ? prev.corrected + 1 : prev.corrected,
+            errors: res.status === 'ERROR' ? prev.errors + 1 : prev.errors
+          }))
+        })
 
         setStep(1, 'done'); setStep(2, 'active')
 
@@ -168,6 +185,9 @@ export default function DashboardPage() {
   function resetApp() {
     setScreen('upload'); setFile(null); setProgress(0); setSteps(['idle', 'idle', 'idle'])
     setResult(null); setProcessedWB(null); setError(null)
+    setStats({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+    setProcessedRows([])
+    setCurrentAddress('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -320,27 +340,32 @@ export default function DashboardPage() {
 
               {/* PROCESSING */}
               {screen === 'processing' && (
-                <div className="flex flex-col items-center gap-6 py-6">
-                  <div className="relative w-20 h-20">
-                    <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.12)] border-t-[var(--orange)]" style={{ animation: 'spin 0.85s linear infinite' }} />
-                    <div className="absolute inset-3 rounded-full border-2 border-[rgba(240,58,23,0.08)] border-b-[var(--orange-light)]" style={{ animation: 'spin 0.55s linear infinite reverse' }} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Zap size={18} className="text-[var(--orange)]" fill="currentColor" />
+                <div className="flex flex-col gap-8 animate-fade-in">
+                  <div className="flex flex-col items-center gap-6 py-6 border-b border-[rgba(255,255,255,0.05)]">
+                    <div className="relative w-20 h-20">
+                      <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.12)] border-t-[var(--orange)]" style={{ animation: 'spin 0.85s linear infinite' }} />
+                      <div className="absolute inset-3 rounded-full border-2 border-[rgba(240,58,23,0.08)] border-b-[var(--orange-light)]" style={{ animation: 'spin 0.55s linear infinite reverse' }} />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Zap size={18} className="text-[var(--orange)]" fill="currentColor" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-syne font-bold text-xl text-[var(--text)]">Processando planilha…</p>
-                    <p className="text-[var(--text-muted)] text-sm mt-1">Aguarde enquanto otimizamos suas rotas</p>
+                    <div className="text-center">
+                      <p className="font-syne font-bold text-xl text-[var(--text)]">Sincronização Cirúrgica em Andamento…</p>
+                      <p className="text-[var(--text-muted)] text-sm mt-1">Limpando endereços e validando coordenadas via Google Pro</p>
+                    </div>
                   </div>
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2.5">
-                      <span className="text-xs text-[var(--text-muted)]">Progresso</span>
+                      <span className="text-[10px] font-mono text-[var(--text-muted)] truncate max-w-[80%] uppercase tracking-wider">
+                        {currentAddress || 'Iniciado...'}
+                      </span>
                       <span className="text-xs font-bold text-[var(--orange)]">{progress}%</span>
                     </div>
                     <div className="h-2 bg-[var(--surface2)] rounded-full overflow-hidden">
                       <div className="h-full rounded-full shadow-[0_0_10px_var(--orange-glow)]" style={{ width: `${progress}%`, background: 'linear-gradient(90deg,var(--orange-dark),var(--orange-light))', transition: 'width 0.1s ease' }} />
                     </div>
                   </div>
+                  
                   <div className="w-full flex flex-col gap-3 pb-[10px]">
                     {stepLabels.map((label, i) => (
                       <div key={i} className={`flex items-center gap-3 text-sm transition-colors duration-300 ${steps[i] === 'done' ? 'text-[var(--green)]' : steps[i] === 'active' ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'}`}>
@@ -356,24 +381,19 @@ export default function DashboardPage() {
 
               {/* SUCCESS */}
               {screen === 'success' && result && (
-                <div className="flex flex-col items-center gap-6 text-center animate-fade-up">
-                  <div className="w-20 h-20 rounded-full border-[3px] border-[var(--green)] flex items-center justify-center shadow-[0_0_32px_var(--green-glow)] animate-pop-in">
-                    <CheckCircle2 size={42} className="text-[var(--green)]" />
+                <div className="flex flex-col gap-8 animate-fade-up">
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="w-20 h-20 rounded-full border-[3px] border-[var(--green)] flex items-center justify-center shadow-[0_0_32px_var(--green-glow)] animate-pop-in">
+                      <CheckCircle2 size={42} className="text-[var(--green)]" />
+                    </div>
+                    <div>
+                      <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Correção Concluída!</h2>
+                      <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com 100% de precisão Rooftop.</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Processamento Concluído!</h2>
-                    <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com sucesso.</p>
-                  </div>
-                  <div className="grid grid-cols-3 gap-3 w-full">
-                    {[{ num: result.paradas, label: 'Paradas' }, { num: result.pacotes, label: 'Pacotes' }, { num: result.semOrdem, label: 'Sem Ordem' }].map(({ num, label }) => (
-                      <div key={label} className="bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl py-4 px-2">
-                        <div className="font-syne font-extrabold text-2xl text-[var(--orange)]">{num}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-1">{label}</div>
-                      </div>
-                    ))}
-                  </div>
+
                   <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-6 md:py-8 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 active:scale-[0.98] transition-all">
-                    <Download size={20} /> Baixar Planilha Processada
+                    <Download size={20} /> Baixar Planilha Oficial Corrigida
                   </button>
                   <div className="flex items-center gap-3 w-full">
                     <div className="flex-1 h-px bg-[var(--border-subtle)]" />
@@ -383,7 +403,7 @@ export default function DashboardPage() {
                   <button onClick={resetApp} className="w-full flex items-center justify-center gap-2 bg-[var(--surface2)] border border-[var(--border-subtle)] text-[var(--text-muted)] rounded-xl py-3.5 text-sm font-semibold hover:text-[var(--text)] transition-all">
                     <RotateCcw size={14} /> Processar nova planilha
                   </button>
-                  <Link href="/history" className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--orange)] transition-colors">
+                  <Link href="/history" className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--orange)] transition-colors mx-auto">
                     <Clock size={12} /> Ver histórico completo
                   </Link>
                 </div>

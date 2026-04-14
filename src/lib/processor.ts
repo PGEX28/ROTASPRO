@@ -30,26 +30,50 @@ const ADDR_CORR: Record<string, string> = {
 
 export type InputRow = Record<string, unknown>
 
-export type OutputRow = {
-  'AT ID': unknown
+export interface OutputRow {
+  'AT ID': string | number
   'Destination Address': string
-  'Bairro': unknown
-  'City': unknown
-  'Zipcode/Postal code': unknown
-  'Latitude': unknown
-  'Longitude': unknown
-  'Address Line 2': string | null
+  'Bairro': string
+  'City': string
+  'Zipcode/Postal code': string
+  'Latitude': string | number
+  'Longitude': string | number
+  'Address Line 2': string
   'Pacotes na Parada': string
 }
 
-export type TransformResult = {
+export interface ProcessedRowResult {
+  index: number
+  status: string // 'ROOFTOP' | 'APPROXIMATE' | 'ERROR' | etc
+  original: {
+    address: string
+    bairro: string
+    zip: string
+    lat: number
+    lng: number
+  }
+  found: {
+    address: string
+    bairro: string
+    zip: string
+    lat: number
+    lng: number
+    precision: string
+  }
+  changed: {
+    address: boolean
+    bairro: boolean
+    zip: boolean
+    coords: boolean
+  }
+  error?: string
+}
+
+export interface TransformResult {
   out: OutputRow[]
   unsequencedCount: number
 }
 
-/**
- * Expande abreviações para exibição final na planilha
- */
 function expandAddress(addr: string): string {
   if (ADDR_CORR[addr]) return ADDR_CORR[addr]
   let expanded = addr
@@ -62,8 +86,12 @@ function expandAddress(addr: string): string {
     [/\bDr\.\b/i, 'Doutor'],
   ]
 
+  // Aplica expansão de prefixo NO INÍCIO apenas se não houver um prefixo forte já presente
   for (const [pat, rep] of PREFIX_MAP) {
-    if (pat.test(expanded)) { expanded = expanded.replace(pat, rep); break }
+    if (pat.test(expanded)) {
+      expanded = expanded.replace(pat, rep)
+      break
+    }
   }
 
   for (const [pat, rep] of inlineExpansions) {
@@ -74,6 +102,21 @@ function expandAddress(addr: string): string {
     if (expanded.includes(abbr)) expanded = expanded.split(abbr).join(full)
   }
   return expanded
+}
+
+/**
+ * Limpa nomes de ruas vindos do Google para evitar redundâncias como "Rua Servidão"
+ */
+function cleanStreetName(name: string): string {
+  if (!name) return ''
+  let clean = name.trim()
+  
+  // Se começar com "Rua Servidão" ou "Rua Avenida", remove o "Rua"
+  if (/^rua\s+(servidão|servidao|avenida|travessa|rodovia|estrada|alameda|praça|praca)\b/i.test(clean)) {
+    clean = clean.replace(/^rua\s+/i, '')
+  }
+  
+  return clean
 }
 
 /**
@@ -151,6 +194,25 @@ function expandAbbreviations(text: string): string {
   return clean
 }
 
+/**
+ * Converte strings com vírgula (Brasil) em números válidos (JS).
+ */
+function safeParseNumber(val: any): number {
+  if (val === null || val === undefined || val === '') return 0
+  if (typeof val === 'number') return val
+  const clean = String(val).replace(',', '.').trim()
+  const num = parseFloat(clean)
+  return isNaN(num) ? 0 : num
+}
+
+/**
+ * Converte números (JS) em strings com vírgula (Brasil).
+ */
+function formatBrazilianCoord(val: number): string {
+  if (!val) return '0'
+  return String(val).replace('.', ',')
+}
+
 function getGroupingKey(r: InputRow): string {
   const rawAddr = String(r['Destination Address'] ?? '')
   
@@ -176,10 +238,6 @@ function getGroupingKey(r: InputRow): string {
   const normalizedAddr = clean.replace(/[,\-\/\.]/g, ' ')
   
   // Busca pelo padrão "nome da rua + numero"
-  // (.+?) -> nome da rua (mínimo possível)
-  // \s+ -> espaço(s)
-  // (\d+) -> número
-  // \b -> limite de palavra
   const match = normalizedAddr.match(/(.+?)\s+(\d+)\b/)
   
   let streetKey = ''
@@ -194,18 +252,51 @@ function getGroupingKey(r: InputRow): string {
   }
 
   // 5. Adição de Confluência por Coordenadas (Região aproximada)
-  // Usamos coordenadas truncadas para diferenciar ruas homônimas em cidades diferentes
-  // Multiplicar por 100 dá uma precisão de ~1.1km (nível de bairro)
-  // Isso evita agrupar "Rua 1, 10" do Centro com "Rua 1, 10" do Campeche.
-  const lat = Math.round(Number(r['Latitude'] || 0) * 100) 
-  const lon = Math.round(Number(r['Longitude'] || 0) * 100)
+  const latValue = r['Latitude'] || r['latitude'] || 0
+  const lonValue = r['Longitude'] || r['longitude'] || 0
+  const lat = Math.round(safeParseNumber(latValue) * 100) 
+  const lon = Math.round(safeParseNumber(lonValue) * 100)
   
   return `${streetKey}_${numKey}_${lat}_${lon}`
 }
 
 
+/**
+ * Constrói uma query "cirúrgica" focada apenas no local exato, sem bairro ou cep viciados.
+ */
+function getSurgicalQuery(address: string, city: string): string {
+  if (!address) return ''
+  
+  // 1. Expansão do Claude
+  const expanded = expandAddress(address)
+  
+  // 2. Limpeza de ruído
+  const clean = expanded.replace(/ - .*/, '').trim()
 
-async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ lat: number; lng: number; formatted_address?: string; location_type?: string } | null> {
+  // 3. Extração de Rua + Número
+  const match = clean.match(/(.*)[,\s]\s*(\d+[A-Za-z]?)$/)
+  if (match) {
+    const logradouro = match[1].trim()
+    const numero = match[2].trim()
+    return `${logradouro}, ${numero}, ${city}, SC, Brasil`
+  }
+  
+  return `${clean}, ${city}, SC, Brasil`
+}
+
+
+
+async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ 
+  lat: number; 
+  lng: number; 
+  formatted_address?: string; 
+  location_type?: string;
+  street?: string;
+  neighborhood?: string;
+  city?: string;
+  state?: string;
+  postal_code?: string;
+} | null> {
   try {
     const res = await fetch('/api/geocode', {
       method: 'POST',
@@ -218,7 +309,12 @@ async function fetchCoords(address: string, city?: string, forceRefresh: boolean
       lat: data.lat, 
       lng: data.lng,
       formatted_address: data.formatted_address,
-      location_type: data.location_type
+      location_type: data.location_type,
+      street: data.street,
+      neighborhood: data.neighborhood,
+      city: data.city,
+      state: data.state,
+      postal_code: data.postal_code
     }
   } catch {
     return null
@@ -240,39 +336,33 @@ function getDistance(lat1: number, lon1: number, lat2: number, lon2: number): nu
   return R * c
 }
 
+function normalizeForMatch(str: string): string {
+  return (str || '').toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/[aeiou]/gi, '') // Matching Consonantal: ignora vogais para evitar erro O vs U
+    .replace(/[^a-z0-9]/g, '')
+    .trim()
+}
+
+/**
+ * Extrai o número da casa de forma limpa, removendo zeros à esquerda e prefixos.
+ */
+function extractHouseNumber(addr: string): string {
+  const match = addr.match(/,\s*(?:nº|n°|num|no)?\s*0*(\d+)/i) || addr.match(/\s+0*(\d+)\b/)
+  return match ? match[1] : ''
+}
+
 /**
  * Normaliza o nome da rua para comparação (remove Rua, Servidão, etc)
  */
 function normalizeStreetBody(name: string): string {
-  return name.toLowerCase()
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const clean = normalizeForMatch(name)
+  return clean
     .replace(/^(rua|servidao|srv|avenida|av|travessa|rodovia|rod|praca)\.?\s+/i, '')
     .replace(/\s+/g, ' ')
     .trim()
 }
 
-/**
- * Busca informações oficiais do CEP na API ViaCEP
- */
-async function fetchCepInfo(cep: string): Promise<{ logradouro: string; bairro: string; localidade: string; uf: string } | null> {
-  const cleanCep = String(cep || '').replace(/\D/g, '')
-  if (cleanCep.length !== 8) return null
-  
-  try {
-    const res = await fetch(`https://viacep.com.br/ws/${cleanCep}/json/`)
-    if (!res.ok) return null
-    const data = await res.json()
-    if (data.erro) return null
-    return {
-      logradouro: data.logradouro,
-      bairro: data.bairro,
-      localidade: data.localidade,
-      uf: data.uf
-    }
-  } catch {
-    return null
-  }
-}
 
 /**
  * Padroniza o endereço para um formato limpo que o Google Maps entende melhor
@@ -285,64 +375,33 @@ function standardizeAddress(address: string): string {
     .replace(/,\s+/g, ', ') // Padroniza vírgula existente
 
   // Se não houver vírgula mas houver um número no final, adiciona a vírgula
+  // Ex: "Rua X 10" -> "Rua X, 10"
   if (!clean.includes(',') && /[a-z\s]+\s+\d+/i.test(clean)) {
     clean = clean.replace(/([a-z\s]+)\s+(\d+.*)$/i, '$1, $2')
   }
 
-  // Remove complementos que podem confundir o geocodificador (focamos no Ponto exato)
-  clean = clean.replace(/,\s*(\d+)\s*(casa|fundo|frente|ap|bloco|sala|loja).*/i, ', $1')
+  // Remove complementos agressivamente para focar no ponto do geocodificador
+  // Remove "Casa", "Lote", "Fundo", "Frente", etc que estejam APÓS o número
+  clean = clean.replace(/(,\s*\d+)\s*(casa|fundo|frente|ap|bloco|sala|loja|lote|quadra|qd|lt).*/i, '$1')
     
   return clean
 }
 
-export async function transformRows(rows: InputRow[]): Promise<TransformResult> {
-  // 0. Pré-processamento de CEPs
-  const uniqueCeps = Array.from(new Set(rows.map(r => String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')).filter(c => c.length === 8)))
-  const cepMap = new Map<string, { logradouro: string; bairro: string; localidade: string; uf: string }>()
-  
-  await Promise.all(uniqueCeps.map(async (cep) => {
-    const info = await fetchCepInfo(cep)
-    if (info) cepMap.set(cep, info)
-  }))
+export async function transformRows(
+  rows: InputRow[], 
+  onRowProcessed?: (res: ProcessedRowResult) => void
+): Promise<TransformResult> {
+  // 0. Pré-processamento removido (Google Only)
 
   /**
-   * Tenta corrigir o endereço usando os dados do CEP e extraindo o número original
+   * Padroniza o endereço original da planilha
    */
   const getCorrectedAddr = (r: InputRow) => {
-    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
-    const info = cepMap.get(cep)
     const originalAddr = String(r['Destination Address'] ?? '').trim()
-    
-    // Primeiro, vamos tentar achar o número no endereço original
-    // Procuramos por: ", 123", " nº 123", " n: 123" ou apenas um número no final
-    const numMatch = originalAddr.match(/(?:,|\s+n[º°:]?\s*|#\s*)(\d+[a-z]?)\b/i) || 
-                     originalAddr.match(/\b(\d+[a-z]?)$/i) ||
-                     originalAddr.match(/(\d+)/)
-    const num = numMatch ? numMatch[1] : ''
-
-    if (info && info.logradouro) {
-      // Se temos o logradouro oficial do CEP, usamos ele como base absoluta
-      return `${info.logradouro}${num ? ', ' + num : ''}`
-    }
-
-    // Fallback: se o CEP não retornar rua (CEP único de cidade/bairro), 
-    // usamos o endereço original padronizado
     return standardizeAddress(originalAddr)
   }
 
-  // Função auxiliar para construir o endereço completo para o Google
-  const getFullQuery = (r: InputRow) => {
-    const addrClean = getCorrectedAddr(r)
-    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
-    const info = cepMap.get(cep)
-    
-    const city = info?.localidade || String(r['City'] ?? '').trim()
-    const state = info?.uf || r['State'] || ''
-    
-    // Omitimos o Bairro propositalmente para evitar conflitos de nomenclatura entre ViaCEP e Google
-    const parts = [addrClean, city, state, 'Brazil'].filter(p => p && p !== 'null' && p !== 'undefined')
-    return parts.join(', ')
-  }
+  // 1. Identificar todas as queries únicas e frequências de coordenadas
 
   // 1. Identificar todas as queries únicas e frequências de coordenadas
   const coordsFrequency = new Map<string, number>()
@@ -353,107 +412,165 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     }
   })
 
-  const queries = rows.map(r => ({
-    originalAddr: String(r['Destination Address'] ?? ''),
-    fullQuery: getFullQuery(r),
-    city: String(r['City'] ?? '').trim()
-  }))
-  
-  const queryToCity = new Map<string, string>()
-  queries.forEach(q => queryToCity.set(q.fullQuery, q.city))
-  
-  const uniqueQueries = Array.from(new Set(queries.map(q => q.fullQuery)))
-  
-  // 2. Buscar coordenadas para todas as queries únicas (em paralelo)
-  // Usamos a primeira linha encontrada para cada query como âncora de coordenada
-  const coordsMap = new Map<string, { lat: number; lng: number; formatted_address?: string; location_type?: string }>()
-  await Promise.all(uniqueQueries.map(async (query) => {
-    const city = queryToCity.get(query)
-    const associatedRows = rows.filter(r => getFullQuery(r) === query)
-    const firstRow = associatedRows[0]
-
-    // Identificamos se qualquer linha associada a esta query tem coordenada compartilhada
-    const hasGenericSource = associatedRows.some(r => {
-      const coordKey = `${r['Latitude']}_${r['Longitude']}`
-      return (coordsFrequency.get(coordKey) || 0) > 1 // Mais de 1 rua na mesma coord = genérico
-    })
-
-    const lat = Number(firstRow?.['Latitude'] || 0)
-    const lng = Number(firstRow?.['Longitude'] || 0)
-
-    const coords = await fetchCoords(query, city, hasGenericSource, lat !== 0 ? lat : undefined, lng !== 0 ? lng : undefined)
-    if (coords) coordsMap.set(query, coords)
-  }))
-
-  // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
-  // 3. Atualizar as linhas com as coordenadas obtidas + Âncora de Coordenada
-  let enrichedRows = rows.map(r => {
+  // 2. Processar cada linha com a estratégia Âncora Postal
+  let enrichedRows = await Promise.all(rows.map(async (r, rowIndex) => {
+    const updatedRow = { ...r }
     const originalAddr = String(r['Destination Address'] ?? '').trim()
-    const cep = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
-    const info = cepMap.get(cep)
+    const originalBairro = String(r['Bairro'] ?? '').trim()
+    const originalZip = String(r['Zipcode/Postal code'] ?? '').replace(/\D/g, '')
+    const originalCity = String(r['City'] ?? '').trim()
+    const oldLat = safeParseNumber(r['Latitude'] || r['latitude'] || 0)
+    const oldLng = safeParseNumber(r['Longitude'] || r['longitude'] || 0)
     
-    const standardAddr = getCorrectedAddr(r)
-    
-    // Endereço base atualizado (Logradouro oficial + Número)
-    let updatedRow = { 
-      ...r, 
-      'Destination Address': standardAddr,
-      'Bairro': info?.bairro || r['Bairro'],
-      'City': info?.localidade || r['City']
-    } as InputRow
-    
-    const query = getFullQuery(r)
-    const newCoords = coordsMap.get(query)
-    
-    if (newCoords) {
-      const oldLat = Number(r['Latitude'] || 0)
-      const oldLng = Number(r['Longitude'] || 0)
-      
-      const coordKey = `${oldLat}_${oldLng}`
-      const freq = coordsFrequency.get(coordKey) || 0
-      
-      // Coordenada é genérica se for 0,0 ou se for compartilhada por vários endereços (ponto central)
-      const isGeneric = (oldLat === 0 && oldLng === 0) || freq > 1
-      
-      const newLat = newCoords.lat
-      const newLng = newCoords.lng
-      const dist = getDistance(oldLat, oldLng, newLat, newLng)
-      const isRooftop = newCoords.location_type === 'ROOFTOP'
-      const googleAddr = (newCoords.formatted_address || '').toLowerCase()
-      const searchStreetBody = normalizeStreetBody(originalAddr)
+    const coordKey = `${oldLat}_${oldLng}`
+    const freq = coordsFrequency.get(coordKey) || 0
+    const isGeneric = (oldLat === 0 && oldLng === 0) || freq > 1
 
-      // HIERARQUIA DE CONFIANÇA (Cuidado Cirúrgico):
+    const houseNum = extractHouseNumber(originalAddr)
+    
+    // --- BUSCA CIRÚRGICA (Sincronização de Endereço/Coordenada) ---
+    // Enviamos apenas Logradouro + Número + Cidade para evitar o viés de dados antigos
+    const inputQuery = getSurgicalQuery(originalAddr, originalCity)
+    
+    // --- MODO ESPELHO GOOGLE: TENTATIVA 1 (Busca Direta por Texto) ---
+    // Simulando o "copiar e colar" manual
+    let newCoords = await fetchCoords(inputQuery, originalCity, isGeneric, oldLat !== 0 ? oldLat : undefined, oldLng !== 0 ? oldLng : undefined)
+    let usedQuery = inputQuery
 
-      // CASO A: Coordenada Genérica na Planilha (Placeholder / Centro da Cidade / Bairro)
-      if (isGeneric) {
-        // No caso genérico, confiamos no ponto do Google se o nome da rua bater minimamente
-        if (googleAddr.includes(searchStreetBody)) {
-          updatedRow.Latitude = newLat
-          updatedRow.Longitude = newLng
-        } else {
-          console.warn(`Genérico rejeitado: Nome da rua não coincide. (${searchStreetBody} vs ${googleAddr})`)
-        }
-      } 
-      // CASO B: Coordenada Específica na Planilha (Âncora Real)
-      else {
-        // 1. Confiança Total: ROOFTOP + Nome Bate + Distância até 500m
-        if (isRooftop && googleAddr.includes(searchStreetBody)) {
-          if (dist <= 0.5) {
-            updatedRow.Latitude = newLat
-            updatedRow.Longitude = newLng
-          } else {
-            console.warn(`ROOFTOP ignorado: Ponto a ${dist.toFixed(2)}km de distância em coordenada específica.`)
+    // --- PASSO B: ANCORAGEM POSTAL (Fallback se não for ROOFTOP) ---
+    if (!newCoords || newCoords.location_type !== 'ROOFTOP') {
+        let officialStreet = ''
+        if (originalZip && originalZip.length >= 8) {
+          const zipRes = await fetchCoords(originalZip, originalCity, false)
+          if (zipRes && zipRes.street) {
+             officialStreet = zipRes.street.trim()
           }
         }
-        // 2. Confiança Média: Nome Bate + Distância até 2km
-        else if (googleAddr.includes(searchStreetBody) && dist <= 2.0) {
-          updatedRow.Latitude = newLat
-          updatedRow.Longitude = newLng
+
+        if (officialStreet && houseNum) {
+           const surgicalQuery = `${officialStreet}, ${houseNum}, ${originalCity}, Brazil`
+           const secondTry = await fetchCoords(surgicalQuery, originalCity, isGeneric)
+           
+           if (secondTry && (secondTry.location_type === 'ROOFTOP' || !newCoords)) {
+              newCoords = secondTry
+              usedQuery = surgicalQuery
+           }
         }
+    }
+
+    let newLat = oldLat
+    let newLng = oldLng
+
+    if (newCoords) {
+      newLat = newCoords.lat
+      newLng = newCoords.lng
+      const isRooftop = newCoords.location_type === 'ROOFTOP'
+      const isInterpolated = newCoords.location_type === 'RANGE_INTERPOLATED'
+      const googleAddr = (newCoords.formatted_address || '').toLowerCase()
+      const searchStreetBody = normalizeStreetBody(usedQuery)
+
+      // HIERARQUIA DE CONFIANÇA (PRECISION GUARD)
+      const isHighPrecision = isRooftop || isInterpolated
+      const googleCity = String(newCoords.city ?? '').toLowerCase()
+      
+      const normGoogleAddr = normalizeForMatch(googleAddr)
+      const normOrigCity = normalizeForMatch(originalCity)
+      const normGoogleCity = normalizeForMatch(googleCity)
+      
+      const isSameRegion = normGoogleAddr.includes(normOrigCity) || normGoogleAddr.includes(normGoogleCity)
+
+      // CÁLCULO DE DISTÂNCIA E TRAVA DE 150m
+      const dist = getDistance(oldLat, oldLng, newLat, newLng)
+      const isWithinLimit = isGeneric || dist <= 0.15 // 0.15km = 150 metros
+
+      // PRECISION GUARD REFINADO
+      const shouldUpdate = isHighPrecision && isSameRegion && isWithinLimit
+
+      if (shouldUpdate) {
+        // ATUALIZAÇÃO E FORMATAÇÃO BRASILEIRA (VÍRGULA)
+        const formattedLat = formatBrazilianCoord(newLat)
+        const formattedLng = formatBrazilianCoord(newLng)
+        
+        updatedRow['Latitude'] = formattedLat
+        updatedRow['Longitude'] = formattedLng
+
+        // PADRONIZAÇÃO AUTOMÁTICA E LIMPEZA DE PREFIXOS
+        const googleStreet = cleanStreetName(newCoords.street || '')
+        if (isRooftop && googleStreet && houseNum) {
+           updatedRow['Destination Address'] = `${googleStreet}, ${houseNum}`
+        } else if (isRooftop && newCoords.formatted_address) {
+           updatedRow['Destination Address'] = cleanStreetName(newCoords.formatted_address.split(' - ')[0].split(', Florianópolis')[0].trim())
+        } else {
+           updatedRow['Destination Address'] = originalAddr
+        }
+
+        // LÓGICA DE METADADOS CONSERVADORA (NÃO ALTERAR CASO SEJA VÁLIDO)
+        const normZ = (z: string) => (z || '').replace(/\D/g, '')
+        const origZ = normZ(originalZip)
+        const foundZ = normZ(newCoords.postal_code || '')
+        
+        // Se o CEP original for válido (8 dígitos) e pertencer à mesma zona, mantemos o original
+        const keepOriginalZip = origZ.length === 8 && foundZ.startsWith(origZ.substring(0, 5))
+        
+        if (newCoords.neighborhood) {
+          // Mantém o bairro original se estiver dentro do limite de 150m e não estiver vazio
+          const keepOriginalBairro = originalBairro && dist <= 0.15
+          if (!keepOriginalBairro) {
+            updatedRow['Bairro'] = newCoords.neighborhood
+          }
+        }
+        
+        if (newCoords.city) updatedRow['City'] = newCoords.city
+        
+        if (newCoords.postal_code && !keepOriginalZip) {
+          updatedRow['Zipcode/Postal code'] = newCoords.postal_code
+        }
+        
+        console.log(`Mirror Mode: ${originalAddr} -> ${updatedRow['Destination Address']} (${newCoords.location_type})`)
+      } 
+      else if (isGeneric && isSameRegion && normalizeForMatch(googleAddr).includes(normalizeForMatch(searchStreetBody))) {
+        updatedRow['Latitude'] = formatBrazilianCoord(newLat)
+        updatedRow['Longitude'] = formatBrazilianCoord(newLng)
       }
     }
+    // SINALIZAÇÃO PARA A UI (MODO ESPELHO)
+    if (onRowProcessed) {
+      const norm = (s: string) => (s || '').replace(/\D/g, '')
+      const bChanged = !!(newCoords && newCoords.neighborhood && newCoords.neighborhood !== originalBairro)
+      const zChanged = !!(newCoords && newCoords.postal_code && norm(newCoords.postal_code) !== norm(originalZip))
+      const cChanged = !!(newCoords && (Math.abs(newLat - oldLat) > 0.0001 || Math.abs(newLng - oldLng) > 0.0001))
+      const aChanged = !!(newCoords && updatedRow['Destination Address'] !== originalAddr)
+
+      onRowProcessed({
+        index: rowIndex,
+        status: newCoords?.location_type || 'ERROR',
+        error: newCoords ? undefined : 'Não encontrado',
+        original: {
+          address: originalAddr,
+          bairro: originalBairro,
+          zip: originalZip,
+          lat: oldLat,
+          lng: oldLng
+        },
+        found: {
+          address: String(updatedRow['Destination Address'] || originalAddr),
+          bairro: String(updatedRow['Bairro'] || originalBairro),
+          zip: String(updatedRow['Zipcode/Postal code'] || originalZip),
+          lat: newLat,
+          lng: newLng,
+          precision: newCoords?.location_type || 'NONE'
+        },
+        changed: {
+          address: aChanged,
+          bairro: bChanged,
+          zip: zChanged,
+          coords: cChanged
+        }
+      })
+    }
+
     return updatedRow
-  })
+  }))
 
   // 4. Ordenar a planilha final por CEP (Organização de Logística)
   enrichedRows.sort((a, b) => {
@@ -521,14 +638,14 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
     const g = unseqGroups.get(key)!
     const [base, line2] = splitAddr(String(g.first['Destination Address'] ?? ''))
     out.push({
-      'AT ID': g.first['AT ID'],
+      'AT ID': (g.first['AT ID'] as string | number) ?? '',
       'Destination Address': expandAddress(base),
-      'Bairro': g.first['Bairro'],
-      'City': g.first['City'],
-      'Zipcode/Postal code': g.first['Zipcode/Postal code'],
-      'Latitude': g.first['Latitude'],
-      'Longitude': g.first['Longitude'],
-      'Address Line 2': line2,
+      'Bairro': String(g.first['Bairro'] ?? ''),
+      'City': String(g.first['City'] ?? ''),
+      'Zipcode/Postal code': String(g.first['Zipcode/Postal code'] ?? ''),
+      'Latitude': (g.first['Latitude'] as string | number) ?? '0',
+      'Longitude': (g.first['Longitude'] as string | number) ?? '0',
+      'Address Line 2': String(line2 || ''),
       'Pacotes na Parada': g.labels.join(', '),
     })
   })
@@ -543,14 +660,14 @@ export async function transformRows(rows: InputRow[]): Promise<TransformResult> 
       const seqNums = g.rows.map((r) => String(r['Sequence']))
       const allNums = [...seqNums, ...g.unseqLabels].join(', ')
       out.push({
-        'AT ID': f['AT ID'],
+        'AT ID': (f['AT ID'] as string | number) ?? '',
         'Destination Address': expandAddress(g.base),
-        'Bairro': f['Bairro'],
-        'City': f['City'],
-        'Zipcode/Postal code': f['Zipcode/Postal code'],
-        'Latitude': f['Latitude'],
-        'Longitude': f['Longitude'],
-        'Address Line 2': line2,
+        'Bairro': String(f['Bairro'] ?? ''),
+        'City': String(f['City'] ?? ''),
+        'Zipcode/Postal code': String(f['Zipcode/Postal code'] ?? ''),
+        'Latitude': (f['Latitude'] as string | number) ?? '0',
+        'Longitude': (f['Longitude'] as string | number) ?? '0',
+        'Address Line 2': String(line2 || ''),
         'Pacotes na Parada': allNums,
       })
     })

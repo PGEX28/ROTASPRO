@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!forceRefresh) {
       const { data: cacheEntry } = await supabase
         .from('geocoding_cache')
-        .select('lat, lng, full_address, location_type')
+        .select('lat, lng, full_address, location_type, neighborhood, city, state, postal_code')
         .eq('address_hash', addressHash)
         .single()
 
@@ -36,6 +36,10 @@ export async function POST(req: NextRequest) {
           lng: cacheEntry.lng,
           formatted_address: cacheEntry.full_address,
           location_type: cacheEntry.location_type,
+          neighborhood: cacheEntry.neighborhood,
+          city: cacheEntry.city,
+          state: cacheEntry.state,
+          postal_code: cacheEntry.postal_code,
           source: 'cache'
         })
       }
@@ -61,19 +65,21 @@ export async function POST(req: NextRequest) {
       return await response.json()
     }
 
-    // TENTATIVA 1: Busca Local (com âncora de 500m)
+    // TENTATIVA 1: Busca Local (com âncora de 500m se houver hint)
+    // A query já vem cirúrgica do processador (Logradouro, Número, Cidade)
     let searchData = await performSearch(hintLat, hintLng)
     
     if (searchData.status === 'OVER_QUERY_LIMIT') {
       return NextResponse.json({ error: 'Limite de cota do Google Maps excedido' }, { status: 429 })
     }
 
-    // Busca inteligente: Priorizar ROOFTOP na primeira tentativa
-    let bestResult = (searchData.results || []).find((r: any) => r.geometry.location_type === 'ROOFTOP')
+    // Busca inteligente: Priorizar ROOFTOP
+    let results = searchData.results || []
+    let bestResult = results.find((r: any) => r.geometry.location_type === 'ROOFTOP')
 
-    // TENTATIVA 2: Busca Global (sem âncora) se não achou ROOFTOP na primeira
-    // Isso resolve o problema de coordenadas originais muito erradas
-    if (!bestResult && hintLat && hintLng) {
+    // TENTATIVA 2: Busca Global (sem âncora) se ainda não achou ROOFTOP
+    if (!bestResult && results.length > 0) {
+      // Já temos resultados, mas nenhum é ROOFTOP. Vamos tentar uma busca global limpa.
       const globalData = await performSearch()
       const globalRooftop = (globalData.results || []).find((r: any) => r.geometry.location_type === 'ROOFTOP')
       
@@ -82,9 +88,9 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Fallback: se nenhuma busca achou ROOFTOP, usamos o primeiro resultado da busca local
+    // Fallback Final: se nenhuma busca achou ROOFTOP, usamos o primeiro resultado
     if (!bestResult) {
-      bestResult = searchData.results?.[0]
+      bestResult = results[0]
     }
 
     if (!bestResult) {
@@ -95,13 +101,30 @@ export async function POST(req: NextRequest) {
     const locationType = bestResult.geometry.location_type
     const formattedAddress = bestResult.formatted_address
 
-    // 4. Salvar no Cache
+    // Parser de componentes de endereço
+    const components = bestResult.address_components || []
+    const getComp = (type: string, useShort = false) => {
+      const comp = components.find((c: any) => c.types.includes(type))
+      return comp ? (useShort ? comp.short_name : comp.long_name) : ''
+    }
+
+    const street = getComp('route')
+    const neighborhood = getComp('sublocality_level_1') || getComp('neighborhood')
+    const cityResult = getComp('locality') || getComp('administrative_area_level_2')
+    const state = getComp('administrative_area_level_1', true)
+    const postalCode = getComp('postal_code')
+
+    // 4. Salvar no Cache (Com novos campos)
     await supabase.from('geocoding_cache').insert({
       address_hash: addressHash,
       full_address: formattedAddress,
       location_type: locationType,
       lat,
-      lng
+      lng,
+      neighborhood,
+      city: cityResult,
+      state,
+      postal_code: postalCode
     })
 
     return NextResponse.json({
@@ -109,6 +132,11 @@ export async function POST(req: NextRequest) {
       lng,
       formatted_address: formattedAddress,
       location_type: locationType,
+      street,
+      neighborhood,
+      city: cityResult,
+      state,
+      postal_code: postalCode,
       source: 'google'
     })
 
