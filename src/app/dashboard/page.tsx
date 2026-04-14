@@ -350,14 +350,14 @@ export default function DashboardPage() {
                       </div>
                     </div>
                     <div className="text-center">
-                      <p className="font-syne font-bold text-xl text-[var(--text)]">Sincronização Cirúrgica em Andamento…</p>
-                      <p className="text-[var(--text-muted)] text-sm mt-1">Limpando endereços e validando coordenadas via Google Pro</p>
+                      <p className="font-syne font-bold text-xl text-[var(--text)]">Processando planilha...</p>
+                      <p className="text-[var(--text-muted)] text-sm mt-1">Aguarde enquanto otimizamos suas rotas</p>
                     </div>
                   </div>
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2.5">
                       <span className="text-[10px] font-mono text-[var(--text-muted)] truncate max-w-[80%] uppercase tracking-wider">
-                        {currentAddress || 'Iniciado...'}
+                        Progresso
                       </span>
                       <span className="text-xs font-bold text-[var(--orange)]">{progress}%</span>
                     </div>
