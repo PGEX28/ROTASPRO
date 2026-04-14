@@ -387,13 +387,29 @@ export default function DashboardPage() {
                       <CheckCircle2 size={42} className="text-[var(--green)]" />
                     </div>
                     <div>
-                      <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Correção Concluída!</h2>
-                      <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com 100% de precisão Rooftop.</p>
+                      <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Processamento Concluído!</h2>
+                      <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com sucesso.</p>
+                    </div>
+                  </div>
+
+                  {/* STATS GRID RESTORED */}
+                  <div className="grid grid-cols-3 gap-4 py-2">
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.paradas}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Paradas</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.pacotes}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Pacotes</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.semOrdem}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Sem Ordem</span>
                     </div>
                   </div>
 
                   <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-6 md:py-8 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 active:scale-[0.98] transition-all">
-                    <Download size={20} /> Baixar Planilha Oficial Corrigida
+                    <Download size={20} /> Baixar Planilha Processada
                   </button>
                   <div className="flex items-center gap-3 w-full">
                     <div className="flex-1 h-px bg-[var(--border-subtle)]" />
