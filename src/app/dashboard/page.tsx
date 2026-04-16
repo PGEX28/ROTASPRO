@@ -3,14 +3,15 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { transformRows, type OutputRow, type QualityStats } from '@/lib/processor'
-import Navbar from '@/components/ui/Navbar'
-import InstallBanner from '@/components/ui/InstallBanner'
 import Link from 'next/link'
 import {
   Upload, FileSpreadsheet, X, Zap, AlertTriangle,
-  CheckCircle2, Download, RotateCcw, Clock, CreditCard, TrendingUp
+  CheckCircle2, Download, RotateCcw, Clock, CreditCard, TrendingUp,
+  MapPin, Navigation, LocateFixed, ShieldCheck, Search, Activity, Settings2, BrainCircuit
 } from 'lucide-react'
+import Navbar from '@/components/ui/Navbar'
+import InstallBanner from '@/components/ui/InstallBanner'
+import { transformRows, type OutputRow, type ProcessedRowResult, type QualityStats } from '@/lib/processor'
 
 type Screen = 'upload' | 'processing' | 'success'
 type StepState = 'idle' | 'active' | 'done'
@@ -27,6 +28,9 @@ export default function DashboardPage() {
   const [processedWB, setProcessedWB] = useState<unknown>(null)
   const [isBasicMember, setIsBasicMember] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [processedRows, setProcessedRows] = useState<ProcessedRowResult[]>([])
+  const [currentAddress, setCurrentAddress] = useState<string>('')
+  const [stats, setStats] = useState({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
@@ -34,7 +38,7 @@ export default function DashboardPage() {
   useEffect(() => {
     async function load() {
       const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return // O Middleware (proxy.ts) redireciona automaticamente pro login if !user
+      if (!user) return 
       setUserId(user.id)
       const [{ data: profile }, { data: hist }] = await Promise.all([
         supabase.from('profiles').select('credits').eq('id', user.id).single(),
@@ -43,7 +47,6 @@ export default function DashboardPage() {
       if (profile) setCredits(profile.credits)
       if (hist) setProcessedCount(hist.length)
 
-      // Verificar se o usuário já comprou o Plano Básico no passado
       const { data: purchaseData } = await supabase
         .from('purchases')
         .select('id')
@@ -97,6 +100,9 @@ export default function DashboardPage() {
     if (!file || !userId) return
     if (credits < 1) { setError('Créditos insuficientes. Adquira mais créditos para continuar.'); return }
     setError(null); setScreen('processing'); setProgress(0); setSteps(['active', 'idle', 'idle'])
+    setStats({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+    setProcessedRows([])
+    setCurrentAddress('')
 
     const XLSX = await import('xlsx')
     const reader = new FileReader()
@@ -109,12 +115,22 @@ export default function DashboardPage() {
 
         setStep(0, 'done'); setStep(1, 'active')
         
-        // Chamada assíncrona para o novo motor de geocodificação
-        const { out: transformed, unsequencedCount, qualityStats } = await transformRows(rows, (p) => {
-          setProgress(Math.round(25 + (p * 0.4))) // Mapeia 0-100% do motor para a faixa 25-65% da UI
+        const { out: transformed, unsequencedCount, qualityStats } = await transformRows(rows, (res) => {
+          // Progress mapping: 25-65%
+          // res is ProcessedRowResult (individual row), passed from inside loop
+          setProcessedRows(prev => [res, ...prev].slice(0, 10))
+          setCurrentAddress(res.original.address)
+          setStats(prev => ({
+            total: prev.total + 1,
+            rooftop: res.status === 'ROOFTOP' ? prev.rooftop + 1 : prev.rooftop,
+            corrected: (res.changed.bairro || res.changed.zip || res.changed.coords) ? prev.corrected + 1 : prev.corrected,
+            errors: res.status === 'ERROR' ? prev.errors + 1 : prev.errors
+          }))
+          // Optional: handle overall progress if transformRows provides it
         })
 
         setStep(1, 'done'); setStep(2, 'active')
+
         await animateProgress(65, 100)
 
         const wbOut = XLSX.utils.book_new()
@@ -132,7 +148,6 @@ export default function DashboardPage() {
         const date = new Date().toLocaleDateString('pt-BR').replace(/\//g, '-')
         const fileNameToSave = `Rota Corrigida - ${date}`
 
-        // Upload processed file to Supabase Storage
         const XLSX_WRITE = await import('xlsx')
         const xlsxBuffer = XLSX_WRITE.write(wbOut, { bookType: 'xlsx', type: 'array' })
         const blob = new Blob([xlsxBuffer], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })
@@ -150,7 +165,7 @@ export default function DashboardPage() {
           quality_summary: qualityStats
         })
 
-        // --- SUBMISSÃO DE SUGESTÕES DE ENDEREÇO ---
+        // Audit & Suggestions
         try {
           const auditIssues = transformed
             .filter((r: any) => r._shopee_audit_checked && r._shopee_audit_ok === false && r._shopee_audit_match_reason)
@@ -175,9 +190,8 @@ export default function DashboardPage() {
         } catch (suggErr) {
           console.error("Falha silenciosa ao processar sugestoes:", suggErr);
         }
-        // ------------------------------------------
 
-        // --- SUBMISSÃO DE USO DAS CORREÇÕES PERSISTENTES ---
+        // Usage Tracking
         try {
           const uniqueUsageLogs = Array.from(
              transformed
@@ -185,7 +199,6 @@ export default function DashboardPage() {
                .reduce((acc: Map<string, string>, r: any) => {
                   const risk = r._persistent_risk || 'OK';
                   const exist = acc.get(r._persistent_id);
-                  // Manter pior cenário para cada persistente
                   if (!exist || risk === 'INVALID' || (risk === 'SUSPECT' && exist !== 'INVALID')) {
                      acc.set(r._persistent_id, risk);
                   }
@@ -204,7 +217,6 @@ export default function DashboardPage() {
         } catch (usageErr) {
           console.error("Falha silenciosa ao registrar uso:", usageErr);
         }
-        // ------------------------------------------
 
         setStep(2, 'done')
         setTimeout(() => { setResult({ paradas: transformed.length, pacotes: totalPacotes, semOrdem: unsequencedCount }); setScreen('success') }, 500)
@@ -227,6 +239,9 @@ export default function DashboardPage() {
   function resetApp() {
     setScreen('upload'); setFile(null); setProgress(0); setSteps(['idle', 'idle', 'idle'])
     setResult(null); setProcessedWB(null); setError(null)
+    setStats({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+    setProcessedRows([])
+    setCurrentAddress('')
     if (fileInputRef.current) fileInputRef.current.value = ''
   }
 
@@ -236,81 +251,46 @@ export default function DashboardPage() {
     <div className="flex flex-col min-h-screen">
       <Navbar credits={credits} />
 
-      {/* Page body — centered horizontally AND vertically */}
-      <main className="flex-1 flex items-center justify-center px-4 py-10 w-full">
+      <main className="flex-1 flex items-start md:items-center justify-center px-4 py-6 md:py-10 w-full">
         <div className="w-full max-w-2xl flex flex-col gap-6">
 
-          {/* Hero */}
           <div className="text-center animate-fade-up">
             <div className="inline-flex items-center gap-2 bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.25)] rounded-full px-4 py-1.5 text-[11px] font-semibold text-[var(--orange-light)] uppercase tracking-widest mb-4">
               <Zap size={11} fill="currentColor" /> Processador de Planilhas
             </div>
-            <h1 className="font-syne font-extrabold text-3xl md:text-4xl text-[var(--text)] tracking-tight leading-tight mb-3">
-              Processe suas <span className="text-[var(--orange)]">rotas</span><br /> com precisão
+            <h1 className="font-syne font-extrabold text-2xl md:text-3xl lg:text-4xl text-[var(--text)] tracking-tight leading-tight mb-3">
+              Processe suas <span className="text-[var(--orange)]">rotas</span><br className="hidden md:block" /> com precisão
             </h1>
-            <p className="text-[var(--text-muted)] text-sm leading-relaxed">
+            <p className="text-[var(--text-muted)] text-xs md:text-sm leading-relaxed max-w-sm mx-auto">
               Envie sua planilha Shopee e receba as rotas organizadas em segundos.
             </p>
           </div>
 
-          {/* Quick stats */}
           <div className="grid grid-cols-3 gap-3 animate-slide-in" style={{ animationDelay: '0.05s' }}>
             {[
               { icon: Zap,         label: 'Créditos',    value: credits,        color: 'text-[var(--orange)]', bg: 'bg-[rgba(240,58,23,0.1)]',  href: '/pricing' },
               { icon: TrendingUp,  label: 'Processadas', value: processedCount, color: 'text-[var(--green)]',  bg: 'bg-[rgba(34,197,94,0.1)]',  href: '/history' },
-              { icon: CreditCard,  label: 'Histórico',   value: 'Ver',          color: 'text-blue-400',        bg: 'bg-[rgba(96,165,250,0.1)]', href: '/history' },
+              { icon: FileSpreadsheet,  label: 'Histórico',   value: 'Ver',          color: 'text-blue-400',        bg: 'bg-[rgba(96,165,250,0.1)]', href: '/history' },
             ].map(({ icon: Icon, label, value, color, bg, href }) => (
-              <Link key={label} href={href} className="rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] p-3.5 flex flex-col items-center gap-1.5 hover:border-[rgba(240,58,23,0.3)] transition-all text-center">
-                <div className={`w-8 h-8 rounded-xl ${bg} flex items-center justify-center`}>
-                  <Icon size={15} className={color} />
+              <Link key={label} href={href} className="rounded-2xl bg-[var(--surface)] border border-[var(--border-subtle)] p-3 md:p-4 flex flex-col items-center gap-1 hover:border-[rgba(240,58,23,0.3)] transition-all text-center">
+                <div className={`w-8 h-8 md:w-10 md:h-10 rounded-xl ${bg} flex items-center justify-center`}>
+                  <Icon size={14} className={color} />
                 </div>
-                <div className={`font-syne font-bold text-xl leading-none ${color}`}>{value}</div>
-                <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
+                <div className={`font-syne font-bold text-lg md:text-xl leading-none ${color}`}>{value}</div>
+                <div className="text-[9px] md:text-[10px] text-[var(--text-muted)] uppercase tracking-wider">{label}</div>
               </Link>
             ))}
           </div>
 
-          {/* CIRCUIT APP BANNER - DESATIVADO TEMPORARIAMENTE
-          {isBasicMember && (
-            <div className="animate-fade-up border border-[rgba(240,58,23,0.3)] bg-gradient-to-br from-[var(--surface)] to-[rgba(240,58,23,0.05)] rounded-2xl p-6 relative overflow-hidden group shadow-[0_10px_30px_rgba(0,0,0,0.2)]">
-              <div className="absolute top-4 left-4 z-20">
-                <span className="text-[var(--orange)] text-[10px] font-bold uppercase tracking-widest bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">Acesso VIP</span>
-              </div>
-              <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
-                <Zap size={60} fill="var(--orange)" />
-              </div>
-              <div className="flex flex-col items-center gap-4 relative z-10 pt-6">
-                <div className="w-14 h-14 bg-[var(--orange)] rounded-2xl flex items-center justify-center shadow-[0_5px_15px_rgba(240,58,23,0.3)] flex-shrink-0">
-                  <Download className="text-white" size={28} />
-                </div>
-                <div className="flex-1 text-center">
-                  <h3 className="font-syne font-extrabold text-white text-xl mb-2">App Circuit Modificado</h3>
-                  <p className="text-[var(--text-muted)] text-xs leading-relaxed max-w-md mx-auto">
-                    Tutorial: Este aplicativo é totalmente seguro e exclusivo para o Plano Básico. <strong className="text-orange-400">Importante:</strong> ele funciona apenas mediante autenticação por número de telefone.
-                  </p>
-                </div>
-                <Link 
-                  href="/circuitapp" 
-                  className="bg-[var(--orange)] hover:bg-[var(--orange-light)] text-white px-8 py-3.5 rounded-xl font-syne font-bold text-sm transition-all shadow-lg hover:-translate-y-0.5 flex items-center gap-2 whitespace-nowrap w-full sm:w-auto justify-center"
-                >
-                  <Download size={16} /> Acessar App VIP
-                </Link>
-              </div>
-            </div>
-          )}
-          */}
-
-          {/* Main card */}
           <div className="rounded-2xl bg-[var(--surface)] border border-[var(--border)] overflow-hidden relative animate-slide-in" style={{ animationDelay: '0.1s' }}>
             <div className="absolute top-0 left-0 right-0 h-[2px] bg-gradient-to-r from-transparent via-[var(--orange)] to-transparent" />
-            <div className="p-8 sm:p-10">
+            <div className="p-6 md:p-10">
 
-              {/* UPLOAD */}
               {screen === 'upload' && (
                 <div className="flex flex-col gap-6">
                   <div className="text-center">
-                    <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-2">Enviar planilha</h2>
-                    <p className="text-[var(--text-muted)] text-base">Selecione ou arraste sua planilha de rotas</p>
+                    <h2 className="font-syne font-extrabold text-xl md:text-2xl text-[var(--text)] mb-2">Enviar planilha</h2>
+                    <p className="text-[var(--text-muted)] text-sm md:text-base">Selecione ou arraste sua planilha de rotas</p>
                   </div>
 
                   {!file ? (
@@ -319,8 +299,8 @@ export default function DashboardPage() {
                       onClick={() => fileInputRef.current?.click()}
                       className="border-2 border-dashed border-[rgba(240,58,23,0.3)] rounded-2xl p-10 flex flex-col items-center gap-4 cursor-pointer hover:border-[var(--orange)] hover:bg-[rgba(240,58,23,0.03)] transition-all text-center group"
                     >
-                      <div className="w-16 h-16 rounded-2xl bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.2)] flex items-center justify-center group-hover:scale-110 transition-transform">
-                        <Upload size={28} className="text-[var(--orange)]" />
+                      <div className="w-14 h-14 md:w-16 md:h-16 rounded-2xl bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.2)] flex items-center justify-center group-hover:scale-110 transition-transform">
+                        <Upload size={24} className="text-[var(--orange)]" />
                       </div>
                       <div>
                         <p className="font-syne font-bold text-[var(--text)] mb-1">Selecionar planilha</p>
@@ -355,18 +335,18 @@ export default function DashboardPage() {
 
                   {error && (
                     <div className="bg-red-500/10 border border-red-500/30 rounded-xl px-4 py-3 text-sm text-red-400 flex items-center gap-2">
-                      <AlertTriangle size={15} className="flex-shrink-0" /> {error}
+                       <AlertTriangle size={15} className="flex-shrink-0" /> {error}
                     </div>
                   )}
 
                   <button
                     onClick={startProcessing}
                     disabled={!file || credits === 0}
-                    className="w-full bg-[var(--orange)] text-white rounded-xl py-5 font-syne font-extrabold text-lg flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(240,58,23,0.4)] hover:bg-[var(--orange-light)] hover:shadow-[0_6px_32px_rgba(240,58,23,0.6)] hover:-translate-y-0.5 transition-all disabled:bg-[var(--surface2)] disabled:text-[var(--text-dim)] disabled:border disabled:border-[var(--border-subtle)] disabled:shadow-none disabled:hover:translate-y-0 disabled:cursor-not-allowed"
+                    className="w-full bg-[var(--orange)] text-white rounded-xl py-4 md:py-5 font-syne font-extrabold text-base md:text-lg flex items-center justify-center gap-2.5 shadow-[0_4px_24px_rgba(240,58,23,0.4)] hover:bg-[var(--orange-light)] active:scale-[0.98] transition-all disabled:bg-[var(--surface2)] disabled:text-[var(--text-dim)] disabled:border disabled:shadow-none disabled:cursor-not-allowed"
                   >
-                    <Zap size={20} fill="currentColor" />
+                    <Zap size={18} fill="currentColor" />
                     <span className="tracking-wide">Processar Planilha</span>
-                    <span className="text-[11px] font-bold tracking-wider opacity-80 bg-black/20 px-2.5 py-1 rounded-full uppercase ml-1">1 crédito</span>
+                    <span className="text-[10px] font-bold tracking-wider opacity-80 bg-black/20 px-2 py-0.5 rounded-full uppercase ml-1">1 crédito</span>
                   </button>
 
                   <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5">
@@ -377,29 +357,33 @@ export default function DashboardPage() {
                 </div>
               )}
 
-              {/* PROCESSING */}
               {screen === 'processing' && (
-                <div className="flex flex-col items-center gap-6 py-6">
-                  <div className="relative w-20 h-20">
-                    <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.12)] border-t-[var(--orange)]" style={{ animation: 'spin 0.85s linear infinite' }} />
-                    <div className="absolute inset-3 rounded-full border-2 border-[rgba(240,58,23,0.08)] border-b-[var(--orange-light)]" style={{ animation: 'spin 0.55s linear infinite reverse' }} />
-                    <div className="absolute inset-0 flex items-center justify-center">
-                      <Zap size={18} className="text-[var(--orange)]" fill="currentColor" />
+                <div className="flex flex-col gap-8 animate-fade-in">
+                  <div className="flex flex-col items-center gap-6 py-6 border-b border-[rgba(255,255,255,0.05)]">
+                    <div className="relative w-20 h-20">
+                      <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.12)] border-t-[var(--orange)]" style={{ animation: 'spin 0.85s linear infinite' }} />
+                      <div className="absolute inset-3 rounded-full border-2 border-[rgba(240,58,23,0.08)] border-b-[var(--orange-light)]" style={{ animation: 'spin 0.55s linear infinite reverse' }} />
+                      <div className="absolute inset-0 flex items-center justify-center">
+                        <Zap size={18} className="text-[var(--orange)]" fill="currentColor" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="text-center">
-                    <p className="font-syne font-bold text-xl text-[var(--text)]">Processando planilha…</p>
-                    <p className="text-[var(--text-muted)] text-sm mt-1">Aguarde enquanto otimizamos suas rotas</p>
+                    <div className="text-center">
+                      <p className="font-syne font-bold text-xl text-[var(--text)]">Processando planilha...</p>
+                      <p className="text-[var(--text-muted)] text-sm mt-1">Aguarde enquanto otimizamos suas rotas</p>
+                    </div>
                   </div>
                   <div className="w-full">
                     <div className="flex justify-between items-center mb-2.5">
-                      <span className="text-xs text-[var(--text-muted)]">Progresso</span>
+                      <span className="text-[10px] font-mono text-[var(--text-muted)] truncate max-w-[80%] uppercase tracking-wider">
+                        Progresso
+                      </span>
                       <span className="text-xs font-bold text-[var(--orange)]">{progress}%</span>
                     </div>
                     <div className="h-2 bg-[var(--surface2)] rounded-full overflow-hidden">
                       <div className="h-full rounded-full shadow-[0_0_10px_var(--orange-glow)]" style={{ width: `${progress}%`, background: 'linear-gradient(90deg,var(--orange-dark),var(--orange-light))', transition: 'width 0.1s ease' }} />
                     </div>
                   </div>
+                  
                   <div className="w-full flex flex-col gap-3 pb-[10px]">
                     {stepLabels.map((label, i) => (
                       <div key={i} className={`flex items-center gap-3 text-sm transition-colors duration-300 ${steps[i] === 'done' ? 'text-[var(--green)]' : steps[i] === 'active' ? 'text-[var(--text)]' : 'text-[var(--text-dim)]'}`}>
@@ -410,41 +394,78 @@ export default function DashboardPage() {
                       </div>
                     ))}
                   </div>
+
+                  {/* Real-time processing log */}
+                  {processedRows.length > 0 && (
+                    <div className="bg-[var(--surface2)] rounded-xl border border-[var(--border-subtle)] p-4 overflow-hidden animate-fade-up">
+                       <div className="flex justify-between items-center mb-3">
+                         <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Processamento em Tempo Real</span>
+                         <div className="flex gap-4">
+                           <div className="flex items-center gap-1.5">
+                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--orange)]" />
+                             <span className="text-[10px] font-bold text-[var(--text)]">{stats.total} total</span>
+                           </div>
+                           <div className="flex items-center gap-1.5">
+                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--green)]" />
+                             <span className="text-[10px] font-bold text-[var(--text)]">{stats.rooftop} precisão</span>
+                           </div>
+                         </div>
+                       </div>
+                       <div className="flex flex-col gap-2">
+                         {processedRows.map((row, idx) => (
+                           <div key={idx} className="flex items-center gap-2 text-[11px] font-medium border-l-2 border-[var(--orange)] pl-3 animate-slide-in">
+                             <span className="text-[var(--text-muted)] truncate flex-1">{row.original.address}</span>
+                             {row.status === 'ROOFTOP' ? (
+                               <span className="text-[var(--green)] bg-[var(--green)]/10 px-1.5 py-0.5 rounded text-[9px] font-bold">EXATO</span>
+                             ) : (
+                               <span className="text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded text-[9px] font-bold">AJUSTADO</span>
+                             )}
+                           </div>
+                         ))}
+                       </div>
+                    </div>
+                  )}
                 </div>
               )}
 
-              {/* SUCCESS */}
               {screen === 'success' && result && (
-                <div className="flex flex-col items-center gap-6 text-center animate-fade-up">
-                  <div className="w-20 h-20 rounded-full border-[3px] border-[var(--green)] flex items-center justify-center shadow-[0_0_32px_var(--green-glow)] animate-pop-in">
-                    <CheckCircle2 size={42} className="text-[var(--green)]" />
+                <div className="flex flex-col gap-8 animate-fade-up">
+                  <div className="flex flex-col items-center gap-4 text-center">
+                    <div className="w-20 h-20 rounded-full border-[3px] border-[var(--green)] flex items-center justify-center shadow-[0_0_32px_var(--green-glow)] animate-pop-in">
+                      <CheckCircle2 size={42} className="text-[var(--green)]" />
+                    </div>
+                    <div>
+                      <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Processamento Concluído!</h2>
+                      <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com sucesso.</p>
+                    </div>
                   </div>
-                  <div>
-                    <h2 className="font-syne font-extrabold text-2xl text-[var(--text)] mb-1.5">Processamento Concluído!</h2>
-                    <p className="text-[var(--text-muted)] text-sm">Sua planilha foi otimizada com sucesso.</p>
+
+                  <div className="grid grid-cols-3 gap-4 py-2">
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.1s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.paradas}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Paradas</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.2s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.pacotes}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Pacotes</span>
+                    </div>
+                    <div className="flex flex-col items-center justify-center p-4 bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl animate-fade-up" style={{ animationDelay: '0.3s' }}>
+                      <span className="text-3xl font-syne font-extrabold text-[var(--orange)] mb-1">{result.semOrdem}</span>
+                      <span className="text-[10px] uppercase tracking-widest font-bold text-[var(--text-muted)]">Sem Ordem</span>
+                    </div>
                   </div>
-                  <div className="grid grid-cols-3 gap-3 w-full">
-                    {[{ num: result.paradas, label: 'Paradas' }, { num: result.pacotes, label: 'Pacotes' }, { num: result.semOrdem, label: 'Sem Ordem' }].map(({ num, label }) => (
-                      <div key={label} className="bg-[var(--surface2)] border border-[var(--border-subtle)] rounded-2xl py-4 px-2">
-                        <div className="font-syne font-extrabold text-2xl text-[var(--orange)]">{num}</div>
-                        <div className="text-[10px] text-[var(--text-muted)] uppercase tracking-wider mt-1">{label}</div>
-                      </div>
-                    ))}
-                  </div>
-                  <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-14 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 transition-all my-[-12px]">
-                    <Download size={22} /> Baixar Planilha Processada
+
+                  <button onClick={downloadFile} className="w-full flex items-center justify-center gap-2.5 bg-[var(--green)] text-white rounded-xl py-6 md:py-8 font-syne font-bold text-base shadow-[0_4px_24px_rgba(34,197,94,0.35)] hover:brightness-110 active:scale-[0.98] transition-all">
+                    <Download size={20} /> Baixar Planilha Processada
                   </button>
                   <div className="flex items-center gap-3 w-full">
                     <div className="flex-1 h-px bg-[var(--border-subtle)]" />
                     <span className="text-xs text-[var(--text-muted)]">ou</span>
                     <div className="flex-1 h-px bg-[var(--border-subtle)]" />
                   </div>
-                  <button onClick={resetApp} className="w-full flex items-center justify-center gap-2 bg-[var(--surface2)] border border-[var(--border-subtle)] text-[var(--text-muted)] rounded-xl py-3.5 text-sm font-semibold hover:text-[var(--text)] transition-all">
+                  <button onClick={resetApp} className="w-full flex items-center justify-center gap-2 bg-[var(--surface2)] border border(--border-subtle)] text-[var(--text-muted)] rounded-xl py-3.5 text-sm font-semibold hover:text-[var(--text)] transition-all">
                     <RotateCcw size={14} /> Processar nova planilha
                   </button>
-                  <Link href="/history" className="flex items-center gap-1.5 text-xs text-[var(--text-muted)] hover:text-[var(--orange)] transition-colors">
-                    <Clock size={12} /> Ver histórico completo
-                  </Link>
                 </div>
               )}
 

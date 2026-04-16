@@ -69,18 +69,30 @@ export async function POST(req: NextRequest) {
     }
 
     // TENTATIVA 1: Busca Local (com âncora de 500m se houver hint)
-    // A query já vem cirúrgica do processador (Logradouro, Número, Cidade)
     let searchData = await performSearch(hintLat, hintLng)
     
     if (searchData.status === 'OVER_QUERY_LIMIT') {
       return NextResponse.json({ error: 'Limite de cota do Google Maps excedido' }, { status: 429 })
     }
 
-    // Priorizar resultado por precisão: ROOFTOP > RANGE_INTERPOLATED > primeiro resultado
-    const results = searchData.results || []
+    // Busca inteligente: Priorizar ROOFTOP
+    let results = searchData.results || []
     let bestResult = results.find((r: any) => r.geometry.location_type === 'ROOFTOP')
-      || results.find((r: any) => r.geometry.location_type === 'RANGE_INTERPOLATED')
-      || results[0]
+
+    // TENTATIVA 2: Busca Global (sem âncora) se ainda não achou ROOFTOP
+    if (!bestResult && results.length > 0) {
+      const globalData = await performSearch()
+      const globalRooftop = (globalData.results || []).find((r: any) => r.geometry.location_type === 'ROOFTOP')
+      
+      if (globalRooftop) {
+        bestResult = globalRooftop
+      }
+    }
+
+    // Fallback Final: se nenhuma busca achou ROOFTOP, usamos o primeiro resultado
+    if (!bestResult) {
+      bestResult = results[0]
+    }
 
     if (!bestResult) {
       return NextResponse.json({ error: 'Endereço não encontrado no Google Maps', status: searchData.status }, { status: 404 })

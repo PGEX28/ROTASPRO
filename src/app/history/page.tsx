@@ -85,14 +85,14 @@ export default function HistoryPage() {
     <div className="flex flex-col min-h-screen">
       <Navbar credits={credits} />
 
-      <main className="flex-1 flex flex-col items-center px-4 py-10 w-full">
+      <main className="flex-1 flex flex-col items-center px-4 py-6 md:py-10 w-full">
         <div className="w-full max-w-2xl flex flex-col gap-6">
         {/* ── Header ── */}
         <div className="mb-8 animate-fade-up">
           <div className="inline-flex items-center gap-2 bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.25)] rounded-full px-3.5 py-1.5 text-[11px] font-semibold text-[var(--orange-light)] uppercase tracking-widest mb-4">
             <Clock size={11} /> Histórico
           </div>
-          <h1 className="font-syne font-extrabold text-3xl text-[var(--text)] tracking-tight leading-tight mb-2">
+          <h1 className="font-syne font-extrabold text-2xl md:text-3xl text-[var(--text)] tracking-tight leading-tight mb-2">
             Seu histórico
           </h1>
           <p className="text-[var(--text-muted)] text-sm leading-relaxed">
@@ -127,9 +127,9 @@ export default function HistoryPage() {
               className={`flex-1 flex items-center justify-center gap-3 py-4 rounded-xl text-lg font-bold transition-all
                 ${tab === key
                   ? 'bg-[var(--surface2)] text-[var(--text)] shadow-md border border-[var(--border-subtle)]'
-                  : 'text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[rgba(255,255,255,0.02)]'}`}
+                  : 'text-[var(--text-muted)]'}`}
             >
-              <Icon size={18} /> {label}
+              <Icon className={`md:w-[18px] md:h-[18px] w-4 h-4`} /> <span className="text-sm md:text-lg">{label}</span>
             </button>
           ))}
         </div>
@@ -163,8 +163,8 @@ export default function HistoryPage() {
                     <FileSpreadsheet size={18} className="text-[var(--orange)]" />
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold text-[var(--text)] truncate">{record.file_name}</p>
-                    <p className="text-xs text-[var(--text-muted)] mt-0.5">{fmt(record.created_at)}</p>
+                    <p className="text-[13px] md:text-sm font-semibold text-[var(--text)] truncate">{record.file_name}</p>
+                    <p className="text-[10px] md:text-xs text-[var(--text-muted)] mt-0.5">{fmt(record.created_at)}</p>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
                     {record.file_path && (

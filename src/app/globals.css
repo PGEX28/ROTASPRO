@@ -54,10 +54,10 @@ html, body {
   scroll-behavior: smooth;
 }
 
-/* Scrollbar */
-::-webkit-scrollbar { width: 4px; }
-::-webkit-scrollbar-track { background: var(--bg); }
-::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 2px; }
+/* Scrollbar - Thin for mobile, hidden when possible */
+::-webkit-scrollbar { width: 3px; height: 3px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--surface3); border-radius: 10px; }
 
 /* Navbar Dividers */
 .nav-divider {
@@ -104,22 +104,19 @@ html, body {
   font-weight: 700;
   font-size: 15px;
   cursor: pointer;
-  transition: all 0.15s;
-  box-shadow: 0 4px 24px rgba(240, 58, 23, 0.4);
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 20px rgba(240, 58, 23, 0.3);
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 8px;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: manipulation;
 }
 
-.btn-primary:hover {
-  background: var(--orange-light);
-  box-shadow: 0 6px 32px rgba(240, 58, 23, 0.5);
-  transform: translateY(-1px);
-}
-
-.btn-primary:active { transform: scale(0.97); }
-.btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+.btn-primary:active { transform: scale(0.96); opacity: 0.9; }
+.btn-primary:disabled { opacity: 0.3; cursor: not-allowed; transform: none; }
 
 .btn-secondary {
   width: 100%;

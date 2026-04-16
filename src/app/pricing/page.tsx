@@ -38,13 +38,13 @@ export default function PricingPage() {
     <div className="flex flex-col min-h-screen">
       <Navbar />
 
-      <main className="flex-1 flex flex-col items-center px-4 py-20 gap-12">
+      <main className="flex-1 flex flex-col items-center px-4 py-8 md:py-20 gap-10 md:gap-12 w-full">
         {/* ── Header ── */}
         <div className="text-center animate-fade-up w-full max-w-xl">
           <div className="inline-flex items-center gap-2 bg-[rgba(240,58,23,0.1)] border border-[rgba(240,58,23,0.28)] rounded-full px-4 py-1.5 text-[11px] font-semibold text-[var(--orange-light)] uppercase tracking-widest mb-5">
             <Zap size={11} fill="currentColor" /> Planos e Créditos
           </div>
-          <h1 className="font-syne font-extrabold text-4xl md:text-5xl text-[var(--text)] tracking-tight leading-[1.08] mb-4">
+          <h1 className="font-syne font-extrabold text-3xl md:text-5xl text-[var(--text)] tracking-tight leading-[1.08] mb-4">
             Escolha seu <span className="text-[var(--orange)]">plano</span>
           </h1>
           <p className="text-[var(--text-muted)] text-base leading-relaxed">
@@ -130,7 +130,7 @@ export default function PricingPage() {
                     {loading === plan.id ? (
                       <div className="w-6 h-6 border-2 border-white/30 border-t-white rounded-full animate-spin" />
                     ) : (
-                      `Comprar — R$ ${plan.price}`
+                      `R$ ${plan.price}`
                     )}
                   </button>
                 </div>

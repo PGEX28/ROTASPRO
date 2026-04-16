@@ -25,7 +25,6 @@ export default function Navbar({ credits }: NavProps) {
           full_name: data.user.user_metadata?.full_name,
         })
 
-        // 1. Verificar se é Admin
         const { data: profile } = await supabase
           .from('profiles')
           .select('is_admin')
@@ -36,7 +35,6 @@ export default function Navbar({ credits }: NavProps) {
           setIsAdmin(true)
         }
 
-        // 2. Verificar se é membro do Plano Básico
         const { data: purchaseData } = await supabase
           .from('purchases')
           .select('id')
@@ -58,8 +56,8 @@ export default function Navbar({ credits }: NavProps) {
   }
 
   return (
-    <header className="z-50 w-full border-b border-[var(--border-subtle)] bg-[rgba(15,13,12,0.95)] flex justify-center">
-      <div className="w-full max-w-5xl px-6 py-4 flex items-center justify-between">
+    <header className="sticky top-0 z-50 backdrop-blur-md border-b border-[var(--border-subtle)] bg-[rgba(15,13,12,0.85)] flex justify-center w-full">
+      <div className="w-full max-w-5xl px-4 py-2.5 md:py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-xl overflow-hidden shadow-[0_0_18px_var(--orange-glow)] flex-shrink-0">
@@ -112,22 +110,19 @@ export default function Navbar({ credits }: NavProps) {
 
         {/* Right side */}
         <div className="flex items-center gap-3">
-          {/* Credits badge */}
           {credits !== undefined && (
-            <Link href="/pricing" className="hidden sm:flex items-center gap-1.5 bg-[rgba(240,58,23,0.12)] border border-[var(--border)] rounded-full px-3 py-1.5 text-sm font-semibold text-[var(--orange)] hover:bg-[rgba(240,58,23,0.2)] transition-all">
-              <Zap size={13} fill="currentColor" />
-              {credits} créditos
+            <Link href="/pricing" className="flex items-center gap-1 bg-[rgba(240,58,23,0.12)] border border-[rgba(240,58,23,0.2)] rounded-full px-2.5 py-1 md:px-3 md:py-1.5 text-[11px] md:text-sm font-bold text-[var(--orange)] hover:bg-[rgba(240,58,23,0.2)] active:scale-95 transition-all">
+              <Zap size={11} className="md:w-[13px] md:h-[13px]" fill="currentColor" />
+              {credits} <span className="hidden xs:inline ml-0.5">créditos</span>
             </Link>
           )}
 
-          {/* User email */}
           {user && (
-            <span className="hidden lg:block text-xs text-[var(--text-muted)] max-w-[140px] truncate">
-              {user.full_name || user.email}
+            <span className="hidden md:block text-xs text-[var(--text-muted)] max-w-[120px] truncate">
+              {user.full_name || user.email?.split('@')[0]}
             </span>
           )}
 
-          {/* Logout */}
           <button
             onClick={handleLogout}
             className="hidden md:flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm text-[var(--text-muted)] hover:text-red-400 hover:bg-[var(--surface2)] transition-all"
@@ -135,7 +130,6 @@ export default function Navbar({ credits }: NavProps) {
             <LogOut size={15} />
           </button>
 
-          {/* Mobile menu toggle */}
           <button
             onClick={() => setMenuOpen(!menuOpen)}
             className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface2)] transition-all"
@@ -147,7 +141,7 @@ export default function Navbar({ credits }: NavProps) {
 
       {/* Mobile menu */}
       {menuOpen && (
-        <div className="md:hidden border-t border-[var(--border-subtle)] bg-[var(--surface)] px-5 py-4 flex flex-col gap-2 animate-fade-up">
+        <div className="absolute top-full left-0 right-0 border-t border-[var(--border-subtle)] bg-[var(--surface)] px-5 py-4 flex flex-col gap-2 animate-fade-up shadow-xl">
           {credits !== undefined && (
             <div className="flex items-center gap-2 text-sm font-semibold text-[var(--orange)] mb-2">
               <Zap size={14} fill="currentColor" />
