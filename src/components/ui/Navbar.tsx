@@ -5,7 +5,7 @@ import Image from 'next/image'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import { useEffect, useState } from 'react'
-import { Zap, LayoutDashboard, CreditCard, Clock, LogOut, Menu, X, Smartphone, ShieldCheck } from 'lucide-react'
+import { Zap, LayoutDashboard, CreditCard, Clock, LogOut, Menu, X, Smartphone, ShieldCheck, BarChart3, Wand2, Database } from 'lucide-react'
 
 type NavProps = { credits?: number }
 
@@ -58,8 +58,8 @@ export default function Navbar({ credits }: NavProps) {
   }
 
   return (
-    <header className="sticky top-0 z-50 backdrop-blur-md border-b border-[var(--border-subtle)] bg-[rgba(15,13,12,0.85)]">
-      <div className="max-w-5xl mx-auto px-5 py-4 flex items-center justify-between">
+    <header className="z-50 w-full border-b border-[var(--border-subtle)] bg-[rgba(15,13,12,0.95)] flex justify-center">
+      <div className="w-full max-w-5xl px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/dashboard" className="flex items-center gap-2.5 group">
           <div className="w-9 h-9 rounded-xl overflow-hidden shadow-[0_0_18px_var(--orange-glow)] flex-shrink-0">
@@ -70,24 +70,45 @@ export default function Navbar({ credits }: NavProps) {
           </span>
         </Link>
 
+        <div className="hidden md:block nav-divider" />
+
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-3">
-          <Link href="/dashboard" className="flex items-center gap-2 px-4 py-2 rounded-lg text-base font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all">
-            <LayoutDashboard size={18} /> Dashboard
+        <nav className="hidden md:flex items-center gap-2">
+          <Link href="/dashboard" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all whitespace-nowrap">
+            <LayoutDashboard size={16} /> Dashboard
           </Link>
-          <Link href="/pricing" className="flex items-center gap-2 px-4 py-2 rounded-lg text-base font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all">
-            <CreditCard size={18} /> Créditos
+          <div className="nav-divider" />
+          <Link href="/pricing" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all whitespace-nowrap">
+            <CreditCard size={16} /> Créditos
           </Link>
-          <Link href="/history" className="flex items-center gap-2 px-4 py-2 rounded-lg text-base font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all">
-            <Clock size={18} /> Histórico
+          <div className="nav-divider" />
+          <Link href="/history" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)] transition-all whitespace-nowrap">
+            <Clock size={16} /> Histórico
           </Link>
           
           {isAdmin && (
-            <Link href="/admin/credits" className="flex items-center gap-2 px-4 py-2 rounded-lg text-base font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.08)] hover:bg-[rgba(240,58,23,0.15)] transition-all border border-[rgba(240,58,23,0.2)]">
-              <ShieldCheck size={18} /> Painel Admin
-            </Link>
+            <>
+              <div className="nav-divider" />
+              <Link href="/admin/quality" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-emerald-400 hover:bg-[rgba(52,211,153,0.1)] transition-all whitespace-nowrap">
+                <BarChart3 size={16} /> Qualidade
+              </Link>
+              <div className="nav-divider" />
+              <Link href="/admin/corrections" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-blue-400 hover:bg-[rgba(59,130,246,0.1)] transition-all whitespace-nowrap">
+                <Database size={16} /> Correções
+              </Link>
+              <div className="nav-divider" />
+              <Link href="/admin/suggestions" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-orange-400 hover:bg-[rgba(240,58,23,0.1)] transition-all whitespace-nowrap">
+                <Wand2 size={16} /> Sugestões
+              </Link>
+              <div className="nav-divider" />
+              <Link href="/admin/credits" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.08)] hover:bg-[rgba(240,58,23,0.15)] transition-all border border-[rgba(240,58,23,0.2)] whitespace-nowrap">
+                <ShieldCheck size={16} /> Painel Admin
+              </Link>
+            </>
           )}
         </nav>
+
+        <div className="hidden md:block nav-divider" />
 
         {/* Right side */}
         <div className="flex items-center gap-3">
@@ -135,9 +156,20 @@ export default function Navbar({ credits }: NavProps) {
           )}
           
           {isAdmin && (
-            <Link href="/admin/credits" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.1)] mb-2">
-              <ShieldCheck size={15} /> Painel Administrativo
-            </Link>
+            <>
+              <Link href="/admin/quality" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-emerald-400 bg-[rgba(52,211,153,0.08)] mb-1">
+                <BarChart3 size={15} /> Qualidade Global
+              </Link>
+              <Link href="/admin/corrections" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-400 bg-[rgba(59,130,246,0.08)] mb-1">
+                <Database size={15} /> Correções
+              </Link>
+              <Link href="/admin/suggestions" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-orange-400 bg-[rgba(248,113,113,0.08)] mb-1">
+                <Wand2 size={15} /> Sugestões
+              </Link>
+              <Link href="/admin/credits" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.1)] mb-2">
+                <ShieldCheck size={15} /> Painel Administrativo
+              </Link>
+            </>
           )}
 
           <Link href="/dashboard" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm text-[var(--text-muted)] hover:text-[var(--text)] hover:bg-[var(--surface2)]">

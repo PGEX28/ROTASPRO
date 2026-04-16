@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
-import { transformRows, type OutputRow } from '@/lib/processor'
+import { transformRows, type OutputRow, type QualityStats } from '@/lib/processor'
 import Navbar from '@/components/ui/Navbar'
 import InstallBanner from '@/components/ui/InstallBanner'
 import Link from 'next/link'
@@ -108,8 +108,11 @@ export default function DashboardPage() {
         const rows = XLSX.utils.sheet_to_json(ws, { defval: null }) as Record<string, unknown>[]
 
         setStep(0, 'done'); setStep(1, 'active')
-        await animateProgress(25, 65)
-        const { out: transformed, unsequencedCount } = transformRows(rows)
+        
+        // Chamada assíncrona para o novo motor de geocodificação
+        const { out: transformed, unsequencedCount, qualityStats } = await transformRows(rows, (p) => {
+          setProgress(Math.round(25 + (p * 0.4))) // Mapeia 0-100% do motor para a faixa 25-65% da UI
+        })
 
         setStep(1, 'done'); setStep(2, 'active')
         await animateProgress(65, 100)
@@ -143,8 +146,65 @@ export default function DashboardPage() {
           stops_count: transformed.length,
           manual_additions_count: unsequencedCount,
           credits_used: 1,
-          file_path: filePath
+          file_path: filePath,
+          quality_summary: qualityStats
         })
+
+        // --- SUBMISSÃO DE SUGESTÕES DE ENDEREÇO ---
+        try {
+          const auditIssues = transformed
+            .filter((r: any) => r._shopee_audit_checked && r._shopee_audit_ok === false && r._shopee_audit_match_reason)
+            .map((r: any) => ({
+              raw_address: r['Destination Address'] || '',
+              city: r['City'] || '',
+              match_reason: r._shopee_audit_match_reason,
+              distance_km: r._shopee_audit_distance_km || 0,
+              google_lat: r._shopee_audit_google_lat,
+              google_lng: r._shopee_audit_google_lng,
+              shopee_lat: Number(r['Latitude']) || 0,
+              shopee_lng: Number(r['Longitude']) || 0
+            }));
+
+          if (auditIssues.length > 0) {
+            fetch('/api/audit/suggestions', {
+              method: 'POST',
+              body: JSON.stringify({ issues: auditIssues }),
+              headers: { 'Content-Type': 'application/json' }
+            }).catch(e => console.error("Falha ao enviar sugestoes", e));
+          }
+        } catch (suggErr) {
+          console.error("Falha silenciosa ao processar sugestoes:", suggErr);
+        }
+        // ------------------------------------------
+
+        // --- SUBMISSÃO DE USO DAS CORREÇÕES PERSISTENTES ---
+        try {
+          const uniqueUsageLogs = Array.from(
+             transformed
+               .filter((r: any) => r._persistent_hit && r._persistent_id)
+               .reduce((acc: Map<string, string>, r: any) => {
+                  const risk = r._persistent_risk || 'OK';
+                  const exist = acc.get(r._persistent_id);
+                  // Manter pior cenário para cada persistente
+                  if (!exist || risk === 'INVALID' || (risk === 'SUSPECT' && exist !== 'INVALID')) {
+                     acc.set(r._persistent_id, risk);
+                  }
+                  return acc;
+               }, new Map<string, string>())
+               .entries()
+           ).map(([id, risk]) => ({ id, risk }));
+
+          if (uniqueUsageLogs.length > 0) {
+            fetch('/api/corrections/usage', {
+              method: 'POST',
+              body: JSON.stringify({ metrics: uniqueUsageLogs }),
+              headers: { 'Content-Type': 'application/json' }
+            }).catch(e => console.error("Falha ao registrar uso de correcao", e));
+          }
+        } catch (usageErr) {
+          console.error("Falha silenciosa ao registrar uso:", usageErr);
+        }
+        // ------------------------------------------
 
         setStep(2, 'done')
         setTimeout(() => { setResult({ paradas: transformed.length, pacotes: totalPacotes, semOrdem: unsequencedCount }); setScreen('success') }, 500)
