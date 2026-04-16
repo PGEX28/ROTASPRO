@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Navbar from '@/components/ui/Navbar'
-import { Link2, Activity, Play, Pause, Database, MapPin, Settings2, Zap, BrainCircuit, AlertTriangle } from 'lucide-react'
+import { Link2, Activity, Play, Pause, Database, MapPin, Settings2, Zap, BrainCircuit, AlertTriangle, Clock } from 'lucide-react'
 
 type Correction = {
   id: string
