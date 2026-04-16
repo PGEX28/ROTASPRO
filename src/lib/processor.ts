@@ -613,7 +613,10 @@ export async function transformRows(
                   })
                   if (geo.location_type === 'ROOFTOP') stats.rooftopCount++
                   if (geo.location_type === 'RANGE_INTERPOLATED') stats.interpolatedCount++
-                  geocodeCache.set(cacheKey, { ...geo })
+                  geocodeCache.set(cacheKey, { 
+                    ...geo,
+                    location_type: geo.location_type || 'UNKNOWN'
+                  })
                   updatedRow['Bairro'] = geo.neighborhood || updatedRow['Bairro']
                   updatedRow['Zipcode/Postal code'] = geo.postal_code || updatedRow['Zipcode/Postal code']
                   if (geo.street && extractHouseNumber(geo.formatted_address || '')) {
