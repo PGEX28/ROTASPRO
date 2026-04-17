@@ -681,7 +681,7 @@ export async function transformRows(
           let currentBase = base
           const isSNCandidate = base.toUpperCase().includes('SN') || !/\d/.test(base)
           if (isSNCandidate) {
-            const hintNum = extractHintNumber(origLine2)
+            const hintNum = extractHintNumber(origLine2 || '')
             if (hintNum) {
               // Constrói um endereço virtual com a dica para forçar o Google a achar o ponto certo
               currentBase = `${base.replace(/SN/i, '').trim()}, ${hintNum}`
