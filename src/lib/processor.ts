@@ -734,7 +734,7 @@ export async function transformRows(
             updatedRow['_shopee_audit_location_type'] = auditGeo.location_type || 'GOOGLE'
           }
 
-          const hasHint = !!extractHintNumber(origLine2) || hasTextHint(origLine2)
+          const hasHint = !!extractHintNumber(origLine2 || '') || hasTextHint(origLine2 || '')
 
           const decision = chooseFinalCoordinate(
             hintLat,
