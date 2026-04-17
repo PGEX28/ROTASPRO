@@ -26,7 +26,7 @@ export default function LoginPage() {
     if (authListenerSet.current) return
     authListenerSet.current = true
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       // Redireciona apenas em login explícito. 
       // O carregamento inicial (INITIAL_SESSION) é melhor deixar para o Middleware no servidor.
       if (event === 'SIGNED_IN' && session) {

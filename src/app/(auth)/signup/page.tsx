@@ -26,7 +26,7 @@ export default function SignupPage() {
     if (authListenerSet.current) return
     authListenerSet.current = true
 
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: any, session: any) => {
       if ((event === 'SIGNED_IN' || event === 'INITIAL_SESSION') && session) {
         window.location.href = '/dashboard'
       }

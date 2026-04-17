@@ -31,32 +31,45 @@ export default function DashboardPage() {
   const [processedRows, setProcessedRows] = useState<ProcessedRowResult[]>([])
   const [currentAddress, setCurrentAddress] = useState<string>('')
   const [stats, setStats] = useState({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+  const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) return 
-      setUserId(user.id)
-      const [{ data: profile }, { data: hist }] = await Promise.all([
-        supabase.from('profiles').select('credits').eq('id', user.id).single(),
-        supabase.from('processing_history').select('id').eq('user_id', user.id),
-      ])
-      if (profile) setCredits(profile.credits)
-      if (hist) setProcessedCount(hist.length)
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/login')
+          return
+        }
 
-      const { data: purchaseData } = await supabase
-        .from('purchases')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('status', 'paid')
-        .ilike('plan_name', '%Básico%')
-        .limit(1)
-      
-      if (purchaseData && purchaseData.length > 0) {
-        setIsBasicMember(true)
+        setUserId(user.id)
+        
+        // Busca perfil para créditos e status
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('credits, is_basic')
+          .eq('id', user.id)
+          .single()
+
+        if (profile) {
+          setCredits(profile.credits || 0)
+          setIsBasicMember(!!profile.is_basic)
+        }
+
+        // Count history logic
+        const { count } = await supabase
+          .from('processing_history')
+          .select('*', { count: 'exact', head: true })
+          .eq('user_id', user.id)
+        
+        if (count !== null) setProcessedCount(count || 0)
+      } catch (err) {
+        console.error("Erro ao carregar dashboard:", err)
+      } finally {
+        setIsLoading(false)
       }
     }
     load()

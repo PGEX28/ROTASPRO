@@ -14,7 +14,7 @@ export default function OAuthCodeHandler() {
 
     // O createBrowserClient com detectSessionInUrl: true (default)
     // automaticamente detecta ?code= na URL e faz o exchangeCodeForSession
-    supabase.auth.onAuthStateChange((event, session) => {
+    supabase.auth.onAuthStateChange((event: any, session: any) => {
       if (event === 'SIGNED_IN' && session) {
         window.location.href = '/dashboard'
       }
@@ -24,7 +24,7 @@ export default function OAuthCodeHandler() {
     const url = new URL(window.location.href)
     const code = url.searchParams.get('code')
     if (code) {
-      supabase.auth.exchangeCodeForSession(code).then(({ error }) => {
+      supabase.auth.exchangeCodeForSession(code).then(({ error }: any) => {
         if (error) {
           console.error('[OAuth] Erro ao trocar código:', error.message)
           window.location.href = '/login?error=auth_failed'
@@ -35,7 +35,7 @@ export default function OAuthCodeHandler() {
 
     // Timeout de segurança
     setTimeout(() => {
-      supabase.auth.getSession().then(({ data: { session } }) => {
+      supabase.auth.getSession().then(({ data: { session } }: any) => {
         if (session) {
           window.location.href = '/dashboard'
         } else {

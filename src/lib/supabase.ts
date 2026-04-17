@@ -11,6 +11,7 @@ export type Profile = {
   id: string
   full_name: string | null
   credits: number
+  is_admin?: boolean
   created_at: string
 }
 

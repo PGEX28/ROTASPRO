@@ -54,19 +54,44 @@ export default function HistoryPage() {
 
   useEffect(() => {
     async function load() {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) { router.push('/login'); return }
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (!user) {
+          router.push('/login')
+          return
+        }
 
-      const [{ data: profile }, { data: hist }, { data: purch }] = await Promise.all([
-        supabase.from('profiles').select('credits').eq('id', user.id).single(),
-        supabase.from('processing_history').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50),
-        supabase.from('purchases').select('*').eq('user_id', user.id).order('created_at', { ascending: false }).limit(50),
-      ])
+        // Busca créditos
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('credits')
+          .eq('id', user.id)
+          .single()
 
-      if (profile) setCredits(profile.credits)
-      if (hist) setHistory(hist)
-      if (purch) setPurchases(purch)
-      setLoading(false)
+        if (profile) setCredits(profile.credits || 0)
+
+        // Busca histórico de processamento
+        const { data: hist } = await supabase
+          .from('processing_history')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (hist) setHistory(hist)
+
+        // Busca compras
+        const { data: purch } = await supabase
+          .from('purchases')
+          .select('*')
+          .eq('user_id', user.id)
+          .order('created_at', { ascending: false })
+
+        if (purch) setPurchases(purch)
+      } catch (err) {
+        console.error("Erro ao carregar histórico:", err)
+      } finally {
+        setLoading(false)
+      }
     }
     load()
   }, [])

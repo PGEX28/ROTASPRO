@@ -14,40 +14,37 @@ export default function Navbar({ credits }: NavProps) {
   const [isAdmin, setIsAdmin] = useState(false)
   const [isBasicMember, setIsBasicMember] = useState(false)
   const [menuOpen, setMenuOpen] = useState(false)
+  const [isLoading, setIsLoading] = useState(true)
   const router = useRouter()
   const supabase = createClient()
 
   useEffect(() => {
-    supabase.auth.getUser().then(async ({ data }) => {
-      if (data.user) {
-        setUser({
-          email: data.user.email,
-          full_name: data.user.user_metadata?.full_name,
-        })
+    async function load() {
+      try {
+        const { data: { user } } = await supabase.auth.getUser()
+        if (user) {
+          setUser({
+            email: user.email,
+            full_name: user.user_metadata?.full_name,
+          })
 
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('is_admin')
-          .eq('id', data.user.id)
-          .single()
-        
-        if (profile?.is_admin) {
-          setIsAdmin(true)
-        }
+          // Busca perfil direto para créditos e admin status
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('is_admin, is_basic')
+            .eq('id', user.id)
+            .single()
 
-        const { data: purchaseData } = await supabase
-          .from('purchases')
-          .select('id')
-          .eq('user_id', data.user.id)
-          .eq('status', 'paid')
-          .ilike('plan_name', '%Básico%')
-          .limit(1)
-        
-        if (purchaseData && purchaseData.length > 0) {
-          setIsBasicMember(true)
+          if (profile?.is_admin) setIsAdmin(true)
+          if (profile?.is_basic) setIsBasicMember(true)
         }
+      } catch (err) {
+        console.error("Erro ao carregar dados na Navbar:", err)
+      } finally {
+        setIsLoading(false)
       }
-    })
+    }
+    load()
   }, [])
 
   async function handleLogout() {
