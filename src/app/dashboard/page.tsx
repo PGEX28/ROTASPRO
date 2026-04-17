@@ -1,5 +1,6 @@
 'use client'
 
+// Deploy Trigger: Syncing with Supabase schema update (is_basic column)
 import { useEffect, useRef, useState, useCallback, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'

@@ -1,5 +1,13 @@
 import { createBrowserClient } from '@supabase/ssr'
 
+export type Profile = {
+  id: string
+  full_name: string | null
+  credits: number
+  is_basic?: boolean
+  created_at: string
+}
+
 export interface ProcessingRecord {
   id: string
   created_at: string
@@ -15,7 +23,7 @@ export interface Purchase {
   id: string
   created_at: string
   plan_name: string
-  amount_paid: number | string
+  amount_paid: number
   credits_added: number
   status: string
   user_id: string
