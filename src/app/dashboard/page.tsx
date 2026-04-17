@@ -31,6 +31,9 @@ export default function DashboardPage() {
   const [processedRows, setProcessedRows] = useState<ProcessedRowResult[]>([])
   const [currentAddress, setCurrentAddress] = useState<string>('')
   const [stats, setStats] = useState({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
+  const [isLoading, setIsLoading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  const router = useRouter()
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
