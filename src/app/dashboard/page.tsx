@@ -82,21 +82,27 @@ export default function DashboardPage() {
 
         setUserId(user.id)
 
-        // 1. Carrega primeiro apenas o PERFIL (Mais crítico para os créditos)
+        // 1. Carrega primeiro apenas o PERFIL (Indispensável para créditos)
         const profileResult = await withTimeout(
           Promise.resolve(supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single())
         ) as any
 
         const { data: profile, error: profileErr } = profileResult
 
-        if (profileErr) throw profileErr
+        if (profileErr) {
+          console.error('Erro crítico ao carregar perfil (profiles):', profileErr)
+          console.error('Contexto do erro - User ID:', user.id)
+          setError('Não foi possível carregar seus créditos agora.')
+          setIsLoading(false)
+          return
+        }
 
         if (profile) {
           setCredits(profile.credits || 0)
           setIsBasicMember(!!profile.is_basic)
         }
 
-        // LIBERA A TELA IMEDIATAMENTE (O histórico pode carregar depois em background)
+        // LIBERA A TELA IMEDIATAMENTE (O histórico pode falhar sem travar o app)
         setIsLoading(false)
 
         // 2. Carrega HISTÓRICO em background (Não-bloqueante)
@@ -104,14 +110,18 @@ export default function DashboardPage() {
           supabase.from('processing_history')
             .select('id')
             .eq('user_id', user.id)
-        ).then(({ data }) => {
+        ).then(({ data, error: histErr }) => {
+            if (histErr) {
+              console.error('Erro (não-bloqueante) ao carregar histórico:', histErr)
+              return
+            }
             if (data) setProcessedCount(data.length)
           })
-          .catch(err => console.error('Falha silenciosa ao carregar histórico:', err))
+          .catch(err => console.error('Falha na rede ao tentar buscar histórico:', err))
 
       } catch (err) {
-        console.error('Erro ao carregar dashboard:', err)
-        setError('Não conseguimos carregar seus dados no momento devido à rede.')
+        console.error('Erro inesperado no boot do dashboard:', err)
+        setError('Erro de conectividade. Verifique seu sinal de internet.')
         setIsLoading(false)
       }
     }
