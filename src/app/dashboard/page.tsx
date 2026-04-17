@@ -31,10 +31,7 @@ export default function DashboardPage() {
   const [processedRows, setProcessedRows] = useState<ProcessedRowResult[]>([])
   const [currentAddress, setCurrentAddress] = useState<string>('')
   const [stats, setStats] = useState({ total: 0, rooftop: 0, corrected: 0, errors: 0 })
-  const [isLoading, setIsLoading] = useState(true)
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
     async function resolveAuthenticatedUser() {
@@ -56,13 +53,11 @@ export default function DashboardPage() {
 
     async function load() {
       try {
-        setIsLoading(true)
         setError(null)
 
         const user = await resolveAuthenticatedUser()
 
         if (!user) {
-          setIsLoading(false)
           router.push('/login')
           return
         }
@@ -82,12 +77,9 @@ export default function DashboardPage() {
         if (hist) {
           setProcessedCount(hist.length)
         }
-
-        setIsLoading(false)
       } catch (err) {
         console.error('Erro ao carregar dashboard:', err)
         setError('Não conseguimos carregar seus dados.')
-        setIsLoading(false)
       }
     }
 
@@ -279,17 +271,6 @@ export default function DashboardPage() {
 
   const stepLabels = ['Lendo arquivo e validando dados', 'Calculando distâncias e otimizando rotas', 'Gerando planilha de saída']
 
-  if (isLoading) {
-    return (
-      <div className="flex flex-col min-h-screen items-center justify-center bg-bg">
-        <div className="relative w-16 h-16 mb-4">
-          <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.1)] border-t-[var(--orange)] animate-spin" />
-          <Zap size={20} className="absolute inset-0 m-auto text-[var(--orange)]" fill="currentColor" />
-        </div>
-        <p className="text-sm font-syne font-bold text-[var(--text-muted)] uppercase tracking-widest animate-pulse">Iniciando seção segura...</p>
-      </div>
-    )
-  }
 
   if (error && !userId) {
     return (
