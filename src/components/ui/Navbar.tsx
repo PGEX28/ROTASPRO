@@ -21,7 +21,9 @@ export default function Navbar({ credits }: NavProps) {
   useEffect(() => {
     async function load() {
       try {
-        const { data: { user } } = await supabase.auth.getUser()
+        const { data: { session } } = await supabase.auth.getSession()
+        const user = session?.user
+        
         if (!user) return
 
         setUser({
@@ -40,13 +42,13 @@ export default function Navbar({ credits }: NavProps) {
           setIsBasicMember(!!profile.is_basic)
         }
       } catch (err) {
-        console.error("Erro ao carregar dados na Navbar:", err)
+        console.error("Erro silencioso na Navbar:", err)
       } finally {
         setIsLoading(false)
       }
     }
     load()
-  }, [])
+  }, [supabase])
 
   async function handleLogout() {
     await supabase.auth.signOut()

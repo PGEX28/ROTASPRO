@@ -34,41 +34,62 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
-  const supabase = createClient()
+  const supabase = useMemo(() => createClient(), [])
 
-  useEffect(() => {
-    async function load() {
-      try {
-        const { data: { user } } = await supabase.auth.getUser()
-        if (!user) {
-          router.push('/login')
-          return
-        }
+  const loadData = useCallback(async (retries = 3) => {
+    try {
+      setIsLoading(true)
+      setError(null)
+      
+      // 1. Tenta obter a sessão de forma rápida (útil no PWA/Cache)
+      let sessionData = await supabase.auth.getSession()
+      let user = sessionData.data.session?.user
 
-        setUserId(user.id)
-        
-        const [{ data: profile }, { data: hist }] = await Promise.all([
-          supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
-          supabase.from('processing_history').select('id').eq('user_id', user.id),
-        ])
+      // 2. Se não houver sessão rápida, tenta o getUser (mais lento, mas seguro)
+      if (!user) {
+        const userData = await supabase.auth.getUser()
+        user = userData.data.user
+      }
 
-        if (profile) {
-          setCredits(profile.credits || 0)
-          setIsBasicMember(!!profile.is_basic)
-        }
-        
-        if (hist) {
-          setProcessedCount(hist.length)
-        }
-      } catch (err) {
-        console.error("Erro ao carregar dashboard:", err)
-        setError("Erro ao carregar seus dados. Verifique sua conexão.")
-      } finally {
+      if (!user) {
+        router.push('/login')
+        return
+      }
+
+      setUserId(user.id)
+      
+      // 3. Busca perfil e histórico simultaneamente
+      const [profileRes, historyRes] = await Promise.all([
+        supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
+        supabase.from('processing_history').select('id').eq('user_id', user.id)
+      ])
+
+      if (profileRes.error && retries > 0) throw new Error('Falha ao buscar perfil')
+
+      if (profileRes.data) {
+        setCredits(profileRes.data.credits || 0)
+        setIsBasicMember(!!profileRes.data.is_basic)
+      }
+      
+      if (historyRes.data) {
+        setProcessedCount(historyRes.data.length)
+      }
+      
+      setIsLoading(false)
+    } catch (err) {
+      console.error(`Erro ao carregar (tentativas restantes: ${retries}):`, err)
+      if (retries > 0) {
+        setTimeout(() => loadData(retries - 1), 1000)
+      } else {
+        setError("Não conseguimos conectar aos nossos serviços. Verifique seu 4G/Wi-Fi.")
         setIsLoading(false)
       }
     }
-    load()
-  }, [])
+  }, [supabase, router])
+
+  useEffect(() => {
+    loadData()
+  }, [loadData])
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.match(/\.(xlsx|xls|csv)$/i)) { setError('Formato inválido. Use .xlsx, .xls ou .csv'); return }
