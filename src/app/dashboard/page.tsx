@@ -37,14 +37,32 @@ export default function DashboardPage() {
   const supabase = createClient()
 
   useEffect(() => {
+    async function resolveAuthenticatedUser() {
+      // 1. Tenta pegar a sessão (mais rápido)
+      const { data: { session } } = await supabase.auth.getSession()
+      if (session?.user) return session.user
+
+      // 2. Fallback imediato para getUser (mais seguro)
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) return user
+
+      // 3. Grace period de 800ms para reidratação em conexões 4G lentas
+      await new Promise(resolve => setTimeout(resolve, 800))
+
+      // 4. Última tentativa antes de desistir
+      const { data: { session: retrySession } } = await supabase.auth.getSession()
+      return retrySession?.user || null
+    }
+
     async function load() {
       try {
         setIsLoading(true)
         setError(null)
 
-        const { data: { user } } = await supabase.auth.getUser()
+        const user = await resolveAuthenticatedUser()
 
         if (!user) {
+          setIsLoading(false)
           router.push('/login')
           return
         }
