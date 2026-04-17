@@ -58,7 +58,8 @@ export default function DashboardPage() {
         const user = await resolveAuthenticatedUser()
 
         if (!user) {
-          router.push('/login')
+          setError('Sessão não encontrada no momento. Toque em "Tentar novamente".')
+          setIsLoading(false)
           return
         }
 
