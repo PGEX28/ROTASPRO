@@ -41,15 +41,9 @@ export default function DashboardPage() {
       setIsLoading(true)
       setError(null)
       
-      // 1. Tenta obter a sessão de forma rápida (útil no PWA/Cache)
+      // 1. Otimização 4G: Validação via sessão local (instantânea)
       const { data: { session } } = await supabase.auth.getSession()
-      let user = session?.user
-
-      // 2. Se não houver sessão rápida, tenta o getUser (mais lento, mas seguro)
-      if (!user) {
-        const { data: { user: authUser } } = await supabase.auth.getUser()
-        if (authUser) user = authUser
-      }
+      const user = session?.user
 
       if (!user) {
         router.push('/login')
@@ -58,30 +52,37 @@ export default function DashboardPage() {
 
       setUserId(user.id)
       
-      // 3. Busca perfil e histórico simultaneamente
-      const [profileRes, historyRes] = await Promise.all([
-        supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
-        supabase.from('processing_history').select('id').eq('user_id', user.id)
-      ])
+      // 2. Carregamento Sequencial (Créditos primeiro - Vital)
+      const { data: profile, error: profileErr } = await supabase
+        .from('profiles')
+        .select('credits, is_basic')
+        .eq('id', user.id)
+        .single()
 
-      if (profileRes.error && retries > 0) throw new Error('Falha ao buscar perfil')
+      if (profileErr && retries > 0) throw profileErr
 
-      if (profileRes.data) {
-        setCredits(profileRes.data.credits || 0)
-        setIsBasicMember(!!profileRes.data.is_basic)
+      if (profile) {
+        setCredits(profile.credits || 0)
+        setIsBasicMember(!!profile.is_basic)
       }
       
-      if (historyRes.data) {
-        setProcessedCount(historyRes.data.length)
-      }
-      
+      // Libera o loading principal assim que os créditos carregam
       setIsLoading(false)
-    } catch (err) {
-      console.error(`Erro ao carregar (tentativas restantes: ${retries}):`, err)
+
+      // 3. Carregamento Progressivo (Histórico em background)
+      supabase.from('processing_history')
+        .select('id')
+        .eq('user_id', user.id)
+        .then(({ data: hist }) => {
+          if (hist) setProcessedCount(hist.length)
+        })
+
+    } catch (err: any) {
+      console.error(`Tentativa de carregamento falhou no 4G:`, err)
       if (retries > 0) {
         setTimeout(() => loadData(retries - 1), 1000)
       } else {
-        setError("Não conseguimos conectar aos nossos serviços. Verifique seu 4G/Wi-Fi.")
+        setError("Instabilidade na rede móvel detectada. Tente recarregar.")
         setIsLoading(false)
       }
     }
