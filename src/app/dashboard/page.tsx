@@ -47,27 +47,22 @@ export default function DashboardPage() {
 
         setUserId(user.id)
         
-        // Busca perfil para créditos e status
-        const { data: profile } = await supabase
-          .from('profiles')
-          .select('credits, is_basic')
-          .eq('id', user.id)
-          .single()
+        const [{ data: profile }, { data: hist }] = await Promise.all([
+          supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
+          supabase.from('processing_history').select('id').eq('user_id', user.id),
+        ])
 
         if (profile) {
           setCredits(profile.credits || 0)
           setIsBasicMember(!!profile.is_basic)
         }
-
-        // Count history logic
-        const { count } = await supabase
-          .from('processing_history')
-          .select('*', { count: 'exact', head: true })
-          .eq('user_id', user.id)
         
-        if (count !== null) setProcessedCount(count || 0)
+        if (hist) {
+          setProcessedCount(hist.length)
+        }
       } catch (err) {
         console.error("Erro ao carregar dashboard:", err)
+        setError("Erro ao carregar seus dados. Verifique sua conexão.")
       } finally {
         setIsLoading(false)
       }
@@ -259,6 +254,36 @@ export default function DashboardPage() {
   }
 
   const stepLabels = ['Lendo arquivo e validando dados', 'Calculando distâncias e otimizando rotas', 'Gerando planilha de saída']
+
+  if (isLoading) {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center bg-bg">
+        <div className="relative w-16 h-16 mb-4">
+          <div className="absolute inset-0 rounded-full border-[3px] border-[rgba(240,58,23,0.1)] border-t-[var(--orange)] animate-spin" />
+          <Zap size={20} className="absolute inset-0 m-auto text-[var(--orange)]" fill="currentColor" />
+        </div>
+        <p className="text-sm font-syne font-bold text-[var(--text-muted)] uppercase tracking-widest animate-pulse">Iniciando seção segura...</p>
+      </div>
+    )
+  }
+
+  if (error && !userId) {
+    return (
+      <div className="flex flex-col min-h-screen items-center justify-center p-6 bg-bg text-center">
+        <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/20 flex items-center justify-center mb-6">
+          <AlertTriangle size={32} className="text-red-400" />
+        </div>
+        <h2 className="font-syne font-extrabold text-2xl mb-2">Erro de Conectividade</h2>
+        <p className="text-[var(--text-muted)] text-sm mb-8 max-w-xs">{error}</p>
+        <button 
+          onClick={() => window.location.reload()}
+          className="bg-[var(--surface2)] text-[var(--text)] border border-[var(--border)] rounded-xl px-8 py-3 font-bold hover:bg-[var(--surface)] transition-all flex items-center gap-2"
+        >
+          <RotateCcw size={16} /> Tentar Novamente
+        </button>
+      </div>
+    )
+  }
 
   return (
     <div className="flex flex-col min-h-screen">

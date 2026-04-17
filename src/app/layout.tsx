@@ -42,6 +42,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <div className="relative z-10 min-h-screen flex flex-col">
           {children}
         </div>
+        
+        {/* Script para remover Service Workers antigos que possam estar cacheando o app incorretamente */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `
+              if ('serviceWorker' in navigator) {
+                navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                  for(let registration of registrations) {
+                    registration.unregister();
+                    console.log('Service Worker desregistrado para limpeza de cache.');
+                  }
+                });
+              }
+            `,
+          }}
+        />
       </body>
     </html>
   )

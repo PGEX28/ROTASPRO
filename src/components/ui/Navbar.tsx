@@ -22,21 +22,22 @@ export default function Navbar({ credits }: NavProps) {
     async function load() {
       try {
         const { data: { user } } = await supabase.auth.getUser()
-        if (user) {
-          setUser({
-            email: user.email,
-            full_name: user.user_metadata?.full_name,
-          })
+        if (!user) return
 
-          // Busca perfil direto para créditos e admin status
-          const { data: profile } = await supabase
-            .from('profiles')
-            .select('is_admin, is_basic')
-            .eq('id', user.id)
-            .single()
+        setUser({
+          email: user.email,
+          full_name: user.user_metadata?.full_name,
+        })
 
-          if (profile?.is_admin) setIsAdmin(true)
-          if (profile?.is_basic) setIsBasicMember(true)
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('is_admin, is_basic')
+          .eq('id', user.id)
+          .single()
+
+        if (profile) {
+          setIsAdmin(!!profile.is_admin)
+          setIsBasicMember(!!profile.is_basic)
         }
       } catch (err) {
         console.error("Erro ao carregar dados na Navbar:", err)
