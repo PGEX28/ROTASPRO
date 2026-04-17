@@ -395,36 +395,22 @@ export default function DashboardPage() {
                     ))}
                   </div>
 
-                  {/* Real-time processing log */}
-                  {processedRows.length > 0 && (
-                    <div className="bg-[var(--surface2)] rounded-xl border border-[var(--border-subtle)] p-4 overflow-hidden animate-fade-up">
-                       <div className="flex justify-between items-center mb-3">
-                         <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Processamento em Tempo Real</span>
-                         <div className="flex gap-4">
-                           <div className="flex items-center gap-1.5">
-                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--orange)]" />
-                             <span className="text-[10px] font-bold text-[var(--text)]">{stats.total} total</span>
-                           </div>
-                           <div className="flex items-center gap-1.5">
-                             <div className="w-1.5 h-1.5 rounded-full bg-[var(--green)]" />
-                             <span className="text-[10px] font-bold text-[var(--text)]">{stats.rooftop} precisão</span>
+                      {/* Real-time processing log */}
+                      <div className="bg-[var(--surface2)] rounded-xl border border-[var(--border-subtle)] p-4 overflow-hidden animate-fade-up">
+                         <div className="flex justify-between items-center">
+                           <span className="text-[10px] font-bold text-[var(--text-muted)] uppercase tracking-widest">Processamento em Tempo Real</span>
+                           <div className="flex gap-4">
+                             <div className="flex items-center gap-1.5">
+                               <div className="w-1.5 h-1.5 rounded-full bg-[var(--orange)]" />
+                               <span className="text-[10px] font-bold text-[var(--text)]">{stats.total} total</span>
+                             </div>
+                             <div className="flex items-center gap-1.5">
+                               <div className="w-1.5 h-1.5 rounded-full bg-[var(--green)]" />
+                               <span className="text-[10px] font-bold text-[var(--text)]">{stats.rooftop} precisão</span>
+                             </div>
                            </div>
                          </div>
-                       </div>
-                       <div className="flex flex-col gap-2">
-                         {processedRows.map((row, idx) => (
-                           <div key={idx} className="flex items-center gap-2 text-[11px] font-medium border-l-2 border-[var(--orange)] pl-3 animate-slide-in">
-                             <span className="text-[var(--text-muted)] truncate flex-1">{row.original.address}</span>
-                             {row.status === 'ROOFTOP' ? (
-                               <span className="text-[var(--green)] bg-[var(--green)]/10 px-1.5 py-0.5 rounded text-[9px] font-bold">EXATO</span>
-                             ) : (
-                               <span className="text-blue-400 bg-blue-500/10 px-1.5 py-0.5 rounded text-[9px] font-bold">AJUSTADO</span>
-                             )}
-                           </div>
-                         ))}
-                       </div>
-                    </div>
-                  )}
+                      </div>
                 </div>
               )}
 

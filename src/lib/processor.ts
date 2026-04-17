@@ -151,16 +151,31 @@ function cleanStreetName(name: string): string {
 }
 
 function getCoreName(addr: string): string {
+  if (!addr) return ''
   let core = addr.toLowerCase()
                  .normalize('NFD')
                  .replace(/[\u0300-\u036f]/g, '')
                  .split(',')[0]
                  .trim()
 
+  // Lista abrangente de prefixos brasileiros (com e sem ponto)
   const prefixes = [
-    /^rua\b/i, /^avenida\b/i, /^servidao\b/i, /^rodovia\b/i, 
-    /^estrada\b/i, /^travessa\b/i, /^alameda\b/i, /^pca\b/i, /^praca\b/i,
-    /^srv\b/i, /^av\b/i, /^rod\b/i, /^est\b/i, /^trav\b/i, /^al\b/i, /^r\b/i
+    /^(rua|r[.\s]+)/i,
+    /^(avenida|ave[.\s]+|av[.\s]+)/i,
+    /^(servidao|srv[.\s]+)/i,
+    /^(rodovia|rod[.\s]+)/i,
+    /^(estrada|est[.\s]+)/i,
+    /^(travessa|trav[.\s]+|trv[.\s]+)/i,
+    /^(alameda|al[.\s]+)/i,
+    /^(praca|pca[.\s]+|pça[.\s]+)/i,
+    /^(loteamento|lote[.\s]+)/i,
+    /^(viaduto|vd[.\s]+)/i,
+    /^(calcada|calç[.\s]+)/i,
+    /^(condominio|cond[.\s]+)/i,
+    /^(residencial|res[.\s]+)/i,
+    /^(parque|pq[.\s]+)/i,
+    /^(doutor|dr[.\s]+)/i,
+    /^(professor|prof[.\s]+)/i
   ]
 
   for (const p of prefixes) {
@@ -220,7 +235,53 @@ function safeParseNumber(val: any): number {
 
 function formatBrazilianCoord(val: number): string {
   if (!val) return '0'
-  return String(val).replace('.', ',')
+  return String(val)
+}
+
+function chooseFinalCoordinate(
+  shopeeLat: number, 
+  shopeeLng: number, 
+  googleLat: number | null, 
+  googleLng: number | null, 
+  isStrictMatch: boolean,
+  locationType?: string,
+  hasHint: boolean = false
+): { lat: number; lng: number; source: string } {
+  if (!googleLat || !googleLng) return { lat: shopeeLat, lng: shopeeLng, source: 'SHOPEE' }
+  
+  const distM = getDistance(shopeeLat, shopeeLng, googleLat, googleLng) * 1000
+  
+  // REGRA 1: Acordo (<= 50m) -> Google sempre vence para padronização de base
+  if (distM <= 50) return { lat: googleLat, lng: googleLng, source: 'GOOGLE' }
+  
+  // REGRA 2: Divergência (> 50m)
+  const isRooftop = locationType === 'ROOFTOP'
+  const isInterpolated = locationType === 'RANGE_INTERPOLATED' || locationType === 'GEOMETRIC_CENTER'
+  
+  // CASO ESPECIAL: Voto de Confiança (Dica de Referência)
+  if (hasHint && distM <= 500 && !isRooftop) {
+    console.warn(`[GeoDecision] Voto de Confiança: Mantendo Shopee devido à dica no complemento (${Math.round(distM)}m).`)
+    return { lat: shopeeLat, lng: shopeeLng, source: 'SHOPEE' }
+  }
+
+  // Caso A: Google tem Ponto Exato (ROOFTOP) -> Sempre confiamos se o texto bater
+  if (isStrictMatch && isRooftop) {
+    return { lat: googleLat, lng: googleLng, source: 'GOOGLE' }
+  }
+  
+  // Caso B: Google tem Ponto Estimado (Interpolado)
+  if (isStrictMatch && isInterpolated) {
+    if (distM > 500) {
+      console.warn(`[GeoDecision] Corrigindo erro grosseiro (${Math.round(distM)}m) usando Google Interpolado.`)
+      return { lat: googleLat, lng: googleLng, source: 'GOOGLE' }
+    } else {
+      console.warn(`[GeoDecision] Mantendo Shopee em divergência média (${Math.round(distM)}m) - Google apenas Interpolado.`)
+      return { lat: shopeeLat, lng: shopeeLng, source: 'SHOPEE' }
+    }
+  }
+  
+  // Caso C: Sem match de texto ou outros tipos de precisão baixa
+  return { lat: shopeeLat, lng: shopeeLng, source: 'SHOPEE' }
 }
 
 function isValidCoordinate(lat: any, lng: any): boolean {
@@ -241,9 +302,12 @@ function fuzzyStreetSignature(s: string): string {
   clean = clean
     .replace(/z/g, 's').replace(/x/g, 's').replace(/j/g, 'g').replace(/ch/g, 's')
     .replace(/y/g, 'i').replace(/h/g, '').replace(/[aeiou]/gi, '')
-    .replace(/[^a-z0-9]/g, ' ').trim()
+    .replace(/[^a-z]/g, ' ').trim()
 
   let words = clean.split(/\s+/).filter(w => w.length > 0)
+  // Filtra fora qualquer palavra que contenha números para evitar "Rua X 467" -> "x467"
+  words = words.filter(w => !/\d/.test(w))
+  
   if (words.length >= 2) {
     words = [words[0], words[words.length - 1]]
   }
@@ -375,6 +439,36 @@ function extractHouseNumber(addr: string): string {
   return match ? match[1] : ''
 }
 
+function extractHintNumber(text: string): string | null {
+  if (!text) return null
+  // Busca padrões: "numero 123", "n 123", "no 123", "num 123", "lado do 123"
+  const patterns = [
+    /\b(?:numero|num|n|no|n[oº])\s*(\d+)\b/i,
+    /\blado\s+(?:do|do\s+numero|numero)\s*(\d+)\b/i,
+    /\bproximo\s+(?:ao|ao\s+numero|numero)\s*(\d+)\b/i,
+    /\b(\d+)\b/ // Fallback para qualquer número isolado se o texto for curto
+  ]
+  
+  for (const p of patterns) {
+    const m = text.match(p)
+    if (m) return m[1]
+  }
+  return null
+}
+
+function hasTextHint(text: string): boolean {
+  if (!text) return false
+  const lower = text.toLowerCase()
+  const keywords = [
+    'mercado', 'mercadinho', 'farmacia', 'drogaria', 'igreja', 'templo', 
+    'escola', 'colegio', 'posto', 'hospital', 'clinica', 'condominio', 
+    'residencial', 'edificio', 'predio', 'bloco', 'apartamento', 'apto',
+    'casa', 'sobrado', 'esquina', 'proximo', 'perto', 'frente', 'atras', 
+    'fundo', 'lado', 'academia', 'padaria', 'panificadora'
+  ]
+  return keywords.some(k => lower.includes(k))
+}
+
 function isAddressMatch(inputAddress: string, googleStreet: string): boolean {
   if (!googleStreet) return false
   const inputCore = getCoreName(inputAddress)
@@ -387,16 +481,62 @@ function isAddressMatch(inputAddress: string, googleStreet: string): boolean {
   return streetMatch && numberMatch
 }
 
-function isShopeeAuditMatch(inputAddress: string, googleStreet: string, inputNumber: string, googleNumber: string): { matched: boolean; reason: string } {
-  if (!googleStreet) return { matched: false, reason: 'EMPTY_GOOGLE_STREET' }
-  const inputCore = getCoreName(inputAddress)
-  const googleCore = getCoreName(googleStreet)
-  if (!inputCore || !googleCore) return { matched: false, reason: 'EMPTY_STREET_CORE' }
-  const streetMatch = inputCore.includes(googleCore) || googleCore.includes(inputCore)
-  if (!streetMatch) return { matched: false, reason: 'STREET_MISMATCH' }
-  if (!inputNumber && !googleNumber) return { matched: true, reason: 'MATCH_STREET_ONLY' }
-  if (inputNumber === googleNumber) return { matched: true, reason: 'MATCH_STREET_AND_NUMBER' }
-  return { matched: false, reason: 'NUMBER_MISMATCH' }
+function isShopeeAuditMatch(
+  inputAddress: string, 
+  googleStreet: string, 
+  inputNumber: string, 
+  googleNumber: string,
+  formattedAddress?: string,
+  inputZip?: string,
+  googleZip?: string
+): { matched: boolean; reason: string } {
+  let workingGoogleStreet = googleStreet
+  
+  if (!workingGoogleStreet && formattedAddress) {
+    const parts = formattedAddress.split(',')
+    workingGoogleStreet = parts[0]
+  }
+
+  if (!workingGoogleStreet) return { matched: false, reason: 'EMPTY_GOOGLE_STREET' }
+  
+  // MATCH FONÉTICO/ESTRUTURAL (Garante apenas o nome da rua)
+  const cleanInput = inputAddress.split(',')[0].split('-')[0].trim()
+  const inputSig = fuzzyStreetSignature(cleanInput)
+  const googleSig = fuzzyStreetSignature(workingGoogleStreet)
+  
+  // CONFLUÊNCIA DE CEP: Se o CEP bate, aceitamos nomes de rua mais divergentes
+  const z1 = (inputZip || '').replace(/\D/g, '')
+  const z2 = (googleZip || '').replace(/\D/g, '')
+  const zipMatch = z1 && z2 && (z1 === z2)
+  
+  // Match inteligente: Identidade ou um contido no outro
+  let streetMatch = inputSig === googleSig || inputSig.includes(googleSig) || googleSig.includes(inputSig)
+  
+  // Se o CEP bater, somos mais permissivos (ex: Rua X vs Rua Professor X)
+  if (zipMatch && !streetMatch) {
+    // Se o CEP é idêntico, um match parcial de 50% dos caracteres da assinatura já serve
+    if (inputSig.length > 2 && googleSig.length > 2) {
+      streetMatch = true // Confluência pelo CEP
+    }
+  }
+
+  if (!streetMatch) {
+    console.warn(`[GeoMatch] Street Mismatch: "${inputSig}" vs "${googleSig}" (Raw: "${cleanInput}" vs "${workingGoogleStreet}")`)
+    return { matched: false, reason: 'STREET_MISMATCH' }
+  }
+  
+  // Normalização de números para SN (Sem Número)
+  const normInput = inputNumber?.toUpperCase() === 'SN' ? '' : inputNumber
+  const normGoogle = googleNumber?.toUpperCase() === 'SN' ? '' : googleNumber
+
+  const numberMatch = (!normInput || !normGoogle) ? true : normInput === normGoogle
+  
+  if (numberMatch) {
+    return { matched: true, reason: 'MATCH_STREET_AND_NUMBER' }
+  } else {
+    console.warn(`[GeoMatch] Number Mismatch: "${inputNumber}" vs "${googleNumber}"`)
+    return { matched: false, reason: 'NUMBER_MISMATCH' }
+  }
 }
 
 function buildAddressVariants(surgicalQuery: string, base: string, city: string): string[] {
@@ -450,10 +590,8 @@ export async function transformRows(
   onRowProcessed?: (res: ProcessedRowResult) => void
 ): Promise<TransformResult> {
   const BATCH_SIZE = 10
-  const MAX_SHOPEE_AUDIT = 20
   let processedCount = 0
-  let shopeeAuditCount = 0
-
+  
   const stats: QualityStats = {
     totalRows: rows.length,
     shopeeCount: 0, cacheCount: 0, googleCount: 0, noneCount: 0,
@@ -534,49 +672,85 @@ export async function transformRows(
           location_type: 'SHOPEE_ORIGINAL',
         }
 
-        if (shopeeAuditCount < MAX_SHOPEE_AUDIT) {
-          shopeeAuditCount++
-          stats.shopeeAuditCheckedCount++
-          updatedRow['_shopee_audit_checked'] = true
-          try {
-            const surgicalQuery = getSurgicalQuery(base, city)
-            const auditVariants = buildShopeeAuditVariants(surgicalQuery, base, city)
-            let auditGeo = null
-            let lastRejectionReason = 'GOOGLE_EMPTY_RESULTS'
-
-            for (const variant of auditVariants) {
-              const candidate = await fetchCoords(variant, city, false, hintLat, hintLng)
-              if (!candidate) continue
-              const locType = candidate.location_type || ''
-              if (locType === 'ROOFTOP' || locType === 'RANGE_INTERPOLATED') {
-                const matchResult = isShopeeAuditMatch(base, candidate.street || '', extractHouseNumber(base), extractHouseNumber(candidate.street || candidate.formatted_address || ''))
-                if (matchResult.matched) {
-                  auditGeo = { ...candidate, variantUsed: variant, matchReason: matchResult.reason }
-                  break
-                } else { lastRejectionReason = matchResult.reason }
-              } else { lastRejectionReason = 'INVALID_LOCATION_TYPE' }
+        stats.shopeeAuditCheckedCount++
+        updatedRow['_shopee_audit_checked'] = true
+        try {
+          const surgicalQuery = getSurgicalQuery(base, city)
+          
+          // SCANNER DE DICAS: Se for SN, tenta achar número no complemento
+          let currentBase = base
+          const isSNCandidate = base.toUpperCase().includes('SN') || !/\d/.test(base)
+          if (isSNCandidate) {
+            const hintNum = extractHintNumber(origLine2)
+            if (hintNum) {
+              // Constrói um endereço virtual com a dica para forçar o Google a achar o ponto certo
+              currentBase = `${base.replace(/SN/i, '').trim()}, ${hintNum}`
+              console.log(`[GeoHint] SN detectado. Injetando dica do complemento: "${hintNum}" no endereço: "${currentBase}"`)
             }
+          }
 
-            if (auditGeo) {
-              const dKm = getDistance(hintLat, hintLng, auditGeo.lat, auditGeo.lng)
-              const risk = classifyDistanceRisk(dKm)
-              updatedRow['_shopee_audit_match'] = true
-              updatedRow['_shopee_audit_distance_km'] = Math.round(dKm * 1000) / 1000
-              updatedRow['_shopee_audit_risk'] = risk
-              updatedRow['_shopee_audit_google_lat'] = auditGeo.lat
-              updatedRow['_shopee_audit_google_lng'] = auditGeo.lng
-              updatedRow['_shopee_audit_location_type'] = auditGeo.location_type
-              updatedRow['_shopee_audit_match_reason'] = auditGeo.matchReason || ''
-              if (risk === 'OK') stats.shopeeAuditOkCount++
-              else if (risk === 'SUSPECT') stats.shopeeAuditSuspectCount++
-              else if (risk === 'INVALID') stats.shopeeAuditInvalidCount++
-            } else {
-              updatedRow['_shopee_audit_match'] = false
-              updatedRow['_shopee_audit_risk'] = 'NO_REFERENCE'
-              stats.shopeeAuditNoReferenceCount++
+          // Busca cirúrgica usa a base (ou a base com dica se for SN)
+          let currentSurgicalQuery = surgicalQuery
+          if (isSNCandidate && currentBase !== base) {
+             currentSurgicalQuery = getSurgicalQuery(currentBase, city)
+          }
+
+          const auditVariants = buildShopeeAuditVariants(currentSurgicalQuery, currentBase, city)
+          let auditGeo = null
+          let isStrictMatch = false
+
+          for (const variant of auditVariants) {
+            const candidate = await fetchCoords(variant, city, false, hintLat, hintLng)
+            if (!candidate) continue
+            
+            const matchResult = isShopeeAuditMatch(
+              currentBase, 
+              candidate.street || '', 
+              extractHouseNumber(currentBase), 
+              extractHouseNumber(candidate.street || candidate.formatted_address || ''),
+              candidate.formatted_address,
+              originalZip,
+              candidate.postal_code
+            )
+            
+            if (matchResult.matched) {
+              auditGeo = candidate
+              isStrictMatch = true
+              break
+            } else if (!auditGeo) {
+              auditGeo = candidate
             }
-          } catch (e) { stats.shopeeAuditNoReferenceCount++ }
-        }
+          }
+
+          if (auditGeo) {
+            const dKm = getDistance(hintLat, hintLng, auditGeo.lat, auditGeo.lng)
+            const risk = classifyDistanceRisk(dKm)
+            
+            updatedRow['_shopee_audit_match'] = isStrictMatch
+            updatedRow['_shopee_audit_distance_km'] = Math.round(dKm * 1000) / 1000
+            updatedRow['_shopee_audit_risk'] = risk
+            updatedRow['_shopee_audit_google_lat'] = auditGeo.lat
+            updatedRow['_shopee_audit_google_lng'] = auditGeo.lng
+            updatedRow['_shopee_audit_location_type'] = auditGeo.location_type || 'GOOGLE'
+          }
+
+          const hasHint = !!extractHintNumber(origLine2) || hasTextHint(origLine2)
+
+          const decision = chooseFinalCoordinate(
+            hintLat,
+            hintLng,
+            auditGeo?.lat || null,
+            auditGeo?.lng || null,
+            isStrictMatch,
+            auditGeo?.location_type,
+            hasHint
+          )
+
+          best.lat = decision.lat
+          best.lng = decision.lng
+          best.source = decision.source
+
+        } catch (e) { stats.shopeeAuditNoReferenceCount++ }
       } else {
         const surgicalQuery = getSurgicalQuery(base, city)
         const cacheKey = normalizeCacheKey(surgicalQuery)

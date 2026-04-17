@@ -26,7 +26,7 @@ export async function POST(req: NextRequest) {
     if (!forceRefresh) {
       const { data: cacheEntry } = await supabase
         .from('geocoding_cache')
-        .select('lat, lng, full_address, location_type, neighborhood, city, state, postal_code')
+        .select('lat, lng, full_address, street, location_type, neighborhood, city, state, postal_code')
         .eq('address_hash', addressHash)
         .single()
 
@@ -119,6 +119,7 @@ export async function POST(req: NextRequest) {
     await supabase.from('geocoding_cache').upsert({
       address_hash: addressHash,
       full_address: formattedAddress,
+      street,
       location_type: locationType,
       lat,
       lng,

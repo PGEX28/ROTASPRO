@@ -87,18 +87,6 @@ export default function Navbar({ credits }: NavProps) {
           {isAdmin && (
             <>
               <div className="nav-divider" />
-              <Link href="/admin/quality" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-emerald-400 hover:bg-[rgba(52,211,153,0.1)] transition-all whitespace-nowrap">
-                <BarChart3 size={16} /> Qualidade
-              </Link>
-              <div className="nav-divider" />
-              <Link href="/admin/corrections" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-blue-400 hover:bg-[rgba(59,130,246,0.1)] transition-all whitespace-nowrap">
-                <Database size={16} /> Correções
-              </Link>
-              <div className="nav-divider" />
-              <Link href="/admin/suggestions" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-orange-400 hover:bg-[rgba(240,58,23,0.1)] transition-all whitespace-nowrap">
-                <Wand2 size={16} /> Sugestões
-              </Link>
-              <div className="nav-divider" />
               <Link href="/admin/credits" className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.08)] hover:bg-[rgba(240,58,23,0.15)] transition-all border border-[rgba(240,58,23,0.2)] whitespace-nowrap">
                 <ShieldCheck size={16} /> Painel Admin
               </Link>
@@ -132,9 +120,10 @@ export default function Navbar({ credits }: NavProps) {
 
           <button
             onClick={() => setMenuOpen(!menuOpen)}
-            className="md:hidden p-2 rounded-lg text-[var(--text-muted)] hover:bg-[var(--surface2)] transition-all"
+            className="md:hidden flex items-center gap-1.5 py-1.5 px-3 rounded-lg bg-[var(--surface2)] text-[var(--text)] border border-[var(--border-subtle)] hover:border-[var(--text-muted)] active:scale-95 transition-all shadow-sm"
           >
-            {menuOpen ? <X size={20} /> : <Menu size={20} />}
+            {menuOpen ? <X size={18} /> : <Menu size={18} />}
+            <span className="text-[13px] font-semibold tracking-wide uppercase">{menuOpen ? 'Fechar' : 'Menu'}</span>
           </button>
         </div>
       </div>
@@ -151,15 +140,7 @@ export default function Navbar({ credits }: NavProps) {
           
           {isAdmin && (
             <>
-              <Link href="/admin/quality" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-emerald-400 bg-[rgba(52,211,153,0.08)] mb-1">
-                <BarChart3 size={15} /> Qualidade Global
-              </Link>
-              <Link href="/admin/corrections" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-blue-400 bg-[rgba(59,130,246,0.08)] mb-1">
-                <Database size={15} /> Correções
-              </Link>
-              <Link href="/admin/suggestions" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-medium text-orange-400 bg-[rgba(248,113,113,0.08)] mb-1">
-                <Wand2 size={15} /> Sugestões
-              </Link>
+
               <Link href="/admin/credits" onClick={() => setMenuOpen(false)} className="flex items-center gap-2 px-3 py-2.5 rounded-lg text-sm font-bold text-[var(--orange)] bg-[rgba(240,58,23,0.1)] mb-2">
                 <ShieldCheck size={15} /> Painel Administrativo
               </Link>
