@@ -42,13 +42,13 @@ export default function DashboardPage() {
       setError(null)
       
       // 1. Tenta obter a sessão de forma rápida (útil no PWA/Cache)
-      let sessionData = await supabase.auth.getSession()
-      let user = sessionData.data.session?.user
+      const { data: { session } } = await supabase.auth.getSession()
+      let user = session?.user
 
       // 2. Se não houver sessão rápida, tenta o getUser (mais lento, mas seguro)
       if (!user) {
-        const userData = await supabase.auth.getUser()
-        user = userData.data.user
+        const { data: { user: authUser } } = await supabase.auth.getUser()
+        if (authUser) user = authUser
       }
 
       if (!user) {
