@@ -34,63 +34,47 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const fileInputRef = useRef<HTMLInputElement>(null)
   const router = useRouter()
-  const supabase = useMemo(() => createClient(), [])
+  const supabase = createClient()
 
-  const loadData = useCallback(async (retries = 3) => {
-    try {
-      setIsLoading(true)
-      setError(null)
-      
-      // 1. Otimização 4G: Validação via sessão local (instantânea)
-      const { data: { session } } = await supabase.auth.getSession()
-      const user = session?.user
+  useEffect(() => {
+    async function load() {
+      try {
+        setIsLoading(true)
+        setError(null)
 
-      if (!user) {
-        router.push('/login')
-        return
-      }
+        const { data: { user } } = await supabase.auth.getUser()
 
-      setUserId(user.id)
-      
-      // 2. Carregamento Sequencial (Créditos primeiro - Vital)
-      const { data: profile, error: profileErr } = await supabase
-        .from('profiles')
-        .select('credits, is_basic')
-        .eq('id', user.id)
-        .single()
+        if (!user) {
+          router.push('/login')
+          return
+        }
 
-      if (profileErr && retries > 0) throw profileErr
+        setUserId(user.id)
 
-      if (profile) {
-        setCredits(profile.credits || 0)
-        setIsBasicMember(!!profile.is_basic)
-      }
-      
-      // Libera o loading principal assim que os créditos carregam
-      setIsLoading(false)
+        const [{ data: profile }, { data: hist }] = await Promise.all([
+          supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
+          supabase.from('processing_history').select('id').eq('user_id', user.id),
+        ])
 
-      // 3. Carregamento Progressivo (Histórico em background)
-      supabase.from('processing_history')
-        .select('id')
-        .eq('user_id', user.id)
-        .then(({ data: hist }) => {
-          if (hist) setProcessedCount(hist.length)
-        })
+        if (profile) {
+          setCredits(profile.credits || 0)
+          setIsBasicMember(!!profile.is_basic)
+        }
 
-    } catch (err: any) {
-      console.error(`Tentativa de carregamento falhou no 4G:`, err)
-      if (retries > 0) {
-        setTimeout(() => loadData(retries - 1), 1000)
-      } else {
-        setError("Instabilidade na rede móvel detectada. Tente recarregar.")
+        if (hist) {
+          setProcessedCount(hist.length)
+        }
+
+        setIsLoading(false)
+      } catch (err) {
+        console.error('Erro ao carregar dashboard:', err)
+        setError('Não conseguimos carregar seus dados.')
         setIsLoading(false)
       }
     }
-  }, [supabase, router])
 
-  useEffect(() => {
-    loadData()
-  }, [loadData])
+    load()
+  }, [])
 
   const handleFile = useCallback((f: File) => {
     if (!f.name.match(/\.(xlsx|xls|csv)$/i)) { setError('Formato inválido. Use .xlsx, .xls ou .csv'); return }

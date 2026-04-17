@@ -2,10 +2,16 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
+  const { pathname } = request.nextUrl
+
+  // Rotas públicas — sem verificação de sessão
+  const publicRoutes = ['/login', '/signup', '/auth/callback', '/api/webhook/stripe', '/api/auth/callback', '/api/admin']
+  if (publicRoutes.some(route => pathname.startsWith(route))) {
+    return NextResponse.next()
+  }
+
   let response = NextResponse.next({
-    request: {
-      headers: request.headers,
-    },
+    request: { headers: request.headers },
   })
 
   const supabase = createServerClient(
@@ -17,40 +23,30 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
-          response = NextResponse.next({
-            request: {
-              headers: request.headers,
-            },
+          cookiesToSet.forEach(({ name, value }) => {
+            request.cookies.set(name, value)
           })
-          cookiesToSet.forEach(({ name, value, options }) =>
+          response = NextResponse.next({ request })
+          cookiesToSet.forEach(({ name, value, options }) => {
             response.cookies.set(name, value, options)
-          )
+          })
         },
       },
     }
   )
 
-  // Otimização 4G: Usar getSession() que é mais leve e depende menos do servidor
-  const { data: { session } } = await supabase.auth.getSession()
+  // getUser() verifica o token via API — mais seguro que getSession()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // Se o usuário tentar acessar uma rota protegida sem sessão
-  if (!session) {
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    return NextResponse.redirect(url)
+  if (!user) {
+    return NextResponse.redirect(new URL('/login', request.url))
   }
 
   return response
 }
 
 export const config = {
-  // Otimização 4G: Matcher restrito apenas às rotas que exigem login
   matcher: [
-    '/dashboard/:path*', 
-    '/history/:path*', 
-    '/pricing/:path*',
-    '/checkout/:path*',
-    '/admin/:path*'
+    '/((?!_next/static|_next/image|favicon.ico|logo-app.png|icon-192x192.png|icon-512x512.png|manifest.json|sw.js).*)',
   ],
 }
