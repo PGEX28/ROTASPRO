@@ -1,5 +1,11 @@
-import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
+import { isAdmin } from '@/lib/supabase-server'
+import { NextResponse } from 'next/server'
+const addCreditsSchema = z.object({
+  email: z.string().email('E-mail inválido'),
+  credits: z.number().int().positive('A quantidade deve ser um número inteiro positivo'),
+}).strict() // Bloqueia campos extras não mapeados
 
 // Lazy-init admin client to avoid build-time crash
 function getAdmin() {
@@ -11,21 +17,29 @@ function getAdmin() {
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json()
-    const { email, credits } = body
-    
-    // O segredo agora é enviado via Header de segurança para não aparecer em logs de URL
+    const isUserAdmin = await isAdmin()
     const secret = request.headers.get('X-Admin-Secret')
     const adminSecret = process.env.ADMIN_SECRET
-    
-    // 1. Validação de segurança robusta
-    if (!adminSecret || secret !== adminSecret) {
-      return NextResponse.json({ error: 'Não autorizado. Chave administrativa inválida ou não configurada corretamente nos headers.' }, { status: 401 })
+
+    // Permite se for Admin via sessão OU se tiver a chave secreta correta
+    const isAuthorized = isUserAdmin || (adminSecret && secret === adminSecret)
+
+    if (!isAuthorized) {
+      return NextResponse.json({ error: 'Não autorizado. Acesso restrito a administradores.' }, { status: 401 })
     }
 
-    if (!email || credits === undefined) {
-      return NextResponse.json({ error: 'Falta email ou credits no corpo da requisição.' }, { status: 400 })
+    const json = await request.json()
+    
+    // 1. Validação de esquema (Anti-Payload Manipulation)
+    const result = addCreditsSchema.safeParse(json)
+    if (!result.success) {
+      return NextResponse.json({ 
+        error: 'Payload inválido', 
+        details: result.error.format() 
+      }, { status: 400 })
     }
+
+    const { email, credits } = result.data
 
     const creditsToAdd = parseInt(String(credits), 10)
     if (isNaN(creditsToAdd) || creditsToAdd <= 0) {

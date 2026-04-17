@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { getAutoLearningConfig, shouldAutoApprove, autoApproveSuggestion } from '@/lib/auto-learning'
+import { isAdmin } from '@/lib/supabase-server'
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL
 const SUPABASE_SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -24,6 +25,9 @@ function calculateConfidence(occurrences: number, avgDistanceKm: number, streetM
 
 export async function POST(req: NextRequest) {
   try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
     const { issues } = await req.json()
     if (!issues || !Array.isArray(issues)) {
       return NextResponse.json({ error: 'Payload inválido' }, { status: 400 })

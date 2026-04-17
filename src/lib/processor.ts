@@ -220,6 +220,9 @@ function expandAbbreviations(text: string): string {
     [/\bpe[.\s]+/g, 'padre '],
     [/\bsta[.\s]+/g, 'santa '],
     [/\bsto[.\s]+/g, 'santo '],
+    [/\bservisao\b/g, 'servidão'],
+    [/\bcam[.\s]+/g, 'caminho '],
+    [/\bcmn[.\s]+/g, 'caminho '],
   ]
   expansions.forEach(([re, rep]) => { clean = clean.replace(re, rep) })
   return clean
@@ -296,7 +299,7 @@ function fuzzyStreetSignature(s: string): string {
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
-    .replace(/\b(rua|servidao|avenida|al|travessa|rodovia|rotula|praca|estrada|loteamento)\b/gi, '')
+    .replace(/\b(rua|servidao|servisao|avenida|al|travessa|rodovia|rotula|praca|estrada|loteamento)\b/gi, '')
     .replace(/\b(de|do|da|dos|das|e)\b/gi, '')
     
   clean = clean
@@ -355,26 +358,53 @@ function shouldMergeSameCanonicalAddress(a: InputRow, b: InputRow): boolean {
   const p1 = extractCanonicalParts(addr1)
   const p2 = extractCanonicalParts(addr2)
 
-  if (p1.street !== p2.street) return false
-  const isSn1 = !p1.num || p1.num === 'sn'
-  const isSn2 = !p2.num || p2.num === 'sn'
-  if (isSn1 || isSn2) {
-    return p1.num === p2.num
-  }
-
-  if (p1.num !== p2.num) return false
-
   const lat1 = safeParseNumber(a['Latitude'])
   const lng1 = safeParseNumber(a['Longitude'])
   const lat2 = safeParseNumber(b['Latitude'])
   const lng2 = safeParseNumber(b['Longitude'])
 
-  if (!isValidCoordinate(lat1, lng1) || !isValidCoordinate(lat2, lng2)) {
+  const hasValidCoords1 = isValidCoordinate(lat1, lng1)
+  const hasValidCoords2 = isValidCoordinate(lat2, lng2)
+
+  // PRIORIDADE 1: Coordenadas Idênticas + Mesmo Número
+  if (hasValidCoords1 && hasValidCoords2) {
+    const distM = getDistance(lat1, lng1, lat2, lng2) * 1000
+    
+    // Se a distância for < 10m (mesmo ponto ou colado) e o número bater
+    if (distM < 10 && p1.num === p2.num) {
+      // Se a distância for IRRISÓRIA (< 1m), agrupamos independente da assinatura (provável mesmo ponto Shopee)
+      if (distM < 1) return true
+
+      // Verificação rápida de similaridade de rua para evitar falsos positivos extremos 
+      const s1 = p1.street
+      const s2 = p2.street
+      
+      // Leniente: aceita se uma contém a outra ou se batem perfeitamente
+      if (s1 === s2 || s1.includes(s2) || s2.includes(s1)) {
+        return true
+      }
+
+      // NOVO: Se as coordenadas são muito próximas e compartilham o final da assinatura (ex: "cafezais")
+      // Isso ajuda a ignorar variações no prefixo (Cam vs Caminho) que o fuzzyStreetSignature não limpou
+      const s1End = s1.slice(-4)
+      const s2End = s2.slice(-4)
+      if (s1End === s2End && s1End.length >= 3) {
+        return true
+      }
+    }
+  }
+
+  // PRIORIDADE 2: Bater Nome e Número Exatos (Fallback para quando o GPS varia um pouco)
+  if (p1.street === p2.street && p1.num === p2.num) {
+    // Se o nome e número são iguais, aceitamos até 150m de variação de GPS (comum em mobile)
+    if (hasValidCoords1 && hasValidCoords2) {
+      const distM = getDistance(lat1, lng1, lat2, lng2) * 1000
+      return distM <= 150
+    }
     return true
   }
 
-  const distM = getDistance(lat1, lng1, lat2, lng2) * 1000
-  return distM <= 10
+  return false
 }
 
 function getSurgicalQuery(address: string, city: string): string {

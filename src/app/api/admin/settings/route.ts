@@ -1,8 +1,22 @@
 import { NextResponse } from 'next/server'
+import { z } from 'zod'
 import { createClient } from '@supabase/supabase-js'
+import { isAdmin } from '@/lib/supabase-server'
+import { logSecurityEvent } from '@/lib/audit'
+
+// Esquema de validação para configurações do sistema
+const settingsSchema = z.object({
+  auto_learning_enabled: z.boolean().optional(),
+  min_confidence: z.number().min(0).max(100).optional(),
+  min_occurrences: z.number().int().min(1).optional(),
+  max_avg_distance_km: z.number().min(0).max(10).optional(),
+}).strict()
 
 export async function GET() {
   try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!
@@ -34,7 +48,23 @@ export async function GET() {
 
 export async function POST(req: Request) {
   try {
-    const changes = await req.json()
+    if (!(await isAdmin())) {
+      await logSecurityEvent({
+        event_type: 'UNAUTHORIZED_ADMIN_ACTION',
+        severity: 'critical',
+        metadata: { path: '/api/admin/settings', method: 'POST' }
+      })
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
+
+    const json = await req.json()
+    const result = settingsSchema.safeParse(json)
+
+    if (!result.success) {
+      return NextResponse.json({ error: 'Configurações inválidas', details: result.error.format() }, { status: 400 })
+    }
+
+    const changes = result.data
     const supabaseAdmin = createClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
       process.env.SUPABASE_SERVICE_ROLE_KEY!

@@ -1,8 +1,12 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { isAdmin } from '@/lib/supabase-server'
 
 export async function POST(req: Request) {
   try {
+    if (!(await isAdmin())) {
+      return NextResponse.json({ error: 'Não autorizado' }, { status: 401 })
+    }
     const { id, is_active } = await req.json()
     
     if (!id || typeof is_active !== 'boolean') {
