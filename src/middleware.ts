@@ -2,18 +2,14 @@ import { createServerClient } from '@supabase/ssr'
 import { NextResponse, type NextRequest } from 'next/server'
 
 export async function middleware(request: NextRequest) {
-  const { pathname } = request.nextUrl
-
-  // Rotas públicas — sem verificação de sessão
-  const publicRoutes = ['/login', '/signup', '/auth/callback', '/api/webhook/stripe', '/api/auth/callback', '/api/admin']
-  if (publicRoutes.some(route => pathname.startsWith(route))) {
-    return NextResponse.next()
-  }
-
   let response = NextResponse.next({
-    request: { headers: request.headers },
+    request: {
+      headers: request.headers,
+    },
   })
 
+  // Mantemos o cliente apenas para garantir a sincronização de cookies
+  // mas removemos qualquer verificação de getUser() ou redirecionamento aqui.
   const supabase = createServerClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
@@ -23,25 +19,22 @@ export async function middleware(request: NextRequest) {
           return request.cookies.getAll()
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value }) => {
-            request.cookies.set(name, value)
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value))
+          response = NextResponse.next({
+            request: {
+              headers: request.headers,
+            },
           })
-          response = NextResponse.next({ request })
-          cookiesToSet.forEach(({ name, value, options }) => {
+          cookiesToSet.forEach(({ name, value, options }) =>
             response.cookies.set(name, value, options)
-          })
+          )
         },
       },
     }
   )
 
-  // getUser() verifica o token via API — mais seguro que getSession()
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (!user) {
-    return NextResponse.redirect(new URL('/login', request.url))
-  }
-
+  // O controle de autenticação agora é feito 100% no frontend das páginas.
+  // Isso evita o loop de redirecionamento em redes 4G instáveis.
   return response
 }
 
