@@ -37,25 +37,39 @@ export default function DashboardPage() {
   const supabase = useMemo(() => createClient(), [])
 
   useEffect(() => {
+    function withTimeout<T>(promise: Promise<T>, ms = 8000): Promise<T> {
+      return new Promise((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error('timeout')), ms)
+        promise
+          .then((value) => {
+            clearTimeout(timer)
+            resolve(value)
+          })
+          .catch((err) => {
+            clearTimeout(timer)
+            reject(err)
+          })
+      })
+    }
+
     async function resolveAuthenticatedUser() {
-      // 1. Tenta pegar a sessão (mais rápido)
-      const { data: { session } } = await supabase.auth.getSession()
-      if (session?.user) return session.user
+      try {
+        // 1. Tenta pegar a sessão (mais rápido) via getSession
+        const { data: { session } } = await withTimeout(Promise.resolve(supabase.auth.getSession()))
+        if (session?.user) return session.user
 
-      // 2. Fallback imediato para getUser (mais seguro)
-      const { data: { user } } = await supabase.auth.getUser()
-      if (user) return user
-
-      // 3. Grace period de 800ms para reidratação em conexões 4G lentas
-      await new Promise(resolve => setTimeout(resolve, 800))
-
-      // 4. Última tentativa antes de desistir
-      const { data: { session: retrySession } } = await supabase.auth.getSession()
-      return retrySession?.user || null
+        // 2. Fallback imediato para getUser (mais seguro)
+        const { data: { user } } = await withTimeout(Promise.resolve(supabase.auth.getUser()))
+        return user || null
+      } catch (e) {
+        console.error('Falha na resolução do usuário (timeout ou erro):', e)
+        return null
+      }
     }
 
     async function load() {
       try {
+        setIsLoading(true)
         setError(null)
 
         const user = await resolveAuthenticatedUser()
@@ -68,22 +82,37 @@ export default function DashboardPage() {
 
         setUserId(user.id)
 
-        const [{ data: profile }, { data: hist }] = await Promise.all([
-          supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single(),
-          supabase.from('processing_history').select('id').eq('user_id', user.id),
-        ])
+        // 1. Carrega primeiro apenas o PERFIL (Mais crítico para os créditos)
+        const profileResult = await withTimeout(
+          Promise.resolve(supabase.from('profiles').select('credits, is_basic').eq('id', user.id).single())
+        ) as any
+
+        const { data: profile, error: profileErr } = profileResult
+
+        if (profileErr) throw profileErr
 
         if (profile) {
           setCredits(profile.credits || 0)
           setIsBasicMember(!!profile.is_basic)
         }
 
-        if (hist) {
-          setProcessedCount(hist.length)
-        }
+        // LIBERA A TELA IMEDIATAMENTE (O histórico pode carregar depois em background)
+        setIsLoading(false)
+
+        // 2. Carrega HISTÓRICO em background (Não-bloqueante)
+        Promise.resolve(
+          supabase.from('processing_history')
+            .select('id')
+            .eq('user_id', user.id)
+        ).then(({ data }) => {
+            if (data) setProcessedCount(data.length)
+          })
+          .catch(err => console.error('Falha silenciosa ao carregar histórico:', err))
+
       } catch (err) {
         console.error('Erro ao carregar dashboard:', err)
-        setError('Não conseguimos carregar seus dados.')
+        setError('Não conseguimos carregar seus dados no momento devido à rede.')
+        setIsLoading(false)
       }
     }
 
