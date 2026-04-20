@@ -8,7 +8,6 @@ export type Plan = {
   highlight: boolean
   badge?: string
   perks: string[]
-  stripePriceId?: string
 }
 
 export const PLANS: Plan[] = [
@@ -20,7 +19,6 @@ export const PLANS: Plan[] = [
     pricePerCredit: 1.0,
     description: 'Ideal para testes e entregas eventuais',
     highlight: false,
-    stripePriceId: 'price_1TJiXqRsvUwgrkKxG3WLqjHm',
     perks: [
       '10 processamentos completos',
       'Suporte dedicado',
@@ -34,7 +32,6 @@ export const PLANS: Plan[] = [
     pricePerCredit: 0.89,
     description: 'Perfeito para uso semanal regular',
     highlight: false,
-    stripePriceId: 'price_1TJiXqRsvUwgrkKxAxXiOVCS',
     perks: [
       'Tudo do plano Piloto +',
       '28 processamentos completos',
@@ -50,7 +47,6 @@ export const PLANS: Plan[] = [
     pricePerCredit: 0.83,
     description: 'Para entregadores em tempo integral',
     highlight: true,
-    stripePriceId: 'price_1TJiXrRsvUwgrkKxkrocD3wd',
     badge: 'Mais Popular',
     perks: [
       'Tudo do plano Básico +',
@@ -66,7 +62,6 @@ export const PLANS: Plan[] = [
     pricePerCredit: 0.76,
     description: 'Máxima economia para alta demanda',
     highlight: false,
-    stripePriceId: 'price_1TJiXsRsvUwgrkKxkMGefsWk',
     badge: 'Melhor Custo',
     perks: [
       'Tudo do plano Profissional +',

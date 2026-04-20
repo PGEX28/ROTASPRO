@@ -4,6 +4,7 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { createClient } from '@/lib/supabase'
 import Navbar from '@/components/ui/Navbar'
+import PixModal from '@/components/PixModal'
 import { PLANS } from '@/lib/plans'
 import { Check, Zap, Star, Crown, Rocket, ShieldCheck, Infinity, Smartphone, ArrowRight } from 'lucide-react'
 
@@ -12,6 +13,8 @@ const planIcons = [Zap, Rocket, Star, Crown]
 export default function PricingPage() {
   const [loading, setLoading] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [pixData, setPixData] = useState<any>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
   const router = useRouter()
   const supabase = createClient()
 
@@ -26,10 +29,25 @@ export default function PricingPage() {
     }
 
     try {
-      // Em vez de chamar a API e ir para a stripe.com, levamos o usuário para a nova tela de pagamento embutido
-      router.push(`/checkout/${plan.id}`)
-    } catch (err) {
-      setError('Erro de roteamento.')
+      // Chamada para API de Checkout PIX (Mercado Pago)
+      const res = await fetch('/api/checkout/pix', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: plan.id })
+      })
+
+      const data = await res.json()
+
+      if (!res.ok) {
+        throw new Error(data.error || 'Erro ao gerar PIX')
+      }
+
+      // Exibe o modal com os dados do Mercado Pago
+      setPixData(data)
+      setIsModalOpen(true)
+      setLoading(null)
+    } catch (err: any) {
+      setError(err.message || 'Erro ao processar pagamento.')
       setLoading(null)
     }
   }
@@ -178,6 +196,13 @@ export default function PricingPage() {
           </div>
         </div>
       </main>
+
+      {/* Modal PIX */}
+      <PixModal 
+        isOpen={isModalOpen} 
+        onClose={() => setIsModalOpen(false)} 
+        pixData={pixData} 
+      />
     </div>
   )
 }
