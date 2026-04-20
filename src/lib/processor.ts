@@ -248,12 +248,24 @@ function chooseFinalCoordinate(
   googleLng: number | null, 
   isStrictMatch: boolean,
   locationType?: string,
-  hasHint: boolean = false
+  hasHint: boolean = false,
+  inputZip?: string,
+  googleZip?: string
 ): { lat: number; lng: number; source: string } {
   if (!googleLat || !googleLng) return { lat: shopeeLat, lng: shopeeLng, source: 'SHOPEE' }
   
   const distM = getDistance(shopeeLat, shopeeLng, googleLat, googleLng) * 1000
   
+  // --- REGRA DE CONFLUÊNCIA DE CEP (NUCLEAR) ---
+  // Se o ponto do Google foi encontrado exatamente no CEP que o usuário forneceu,
+  // e o ponto do Shopee está a mais de 1km de distância, o Shopee está ERRADO.
+  const z1 = (inputZip || '').replace(/\D/g, '')
+  const z2 = (googleZip || '').replace(/\D/g, '')
+  if (z1 && z2 && z1 === z2 && distM > 1000) {
+    console.warn(`[GeoDecision] CONFLUÊNCIA DE CEP: Shopee está a ${Math.round(distM)}m do CEP alvo. Forçando correção.`)
+    return { lat: googleLat, lng: googleLng, source: 'GOOGLE' }
+  }
+
   // REGRA 1: Acordo (<= 50m) -> Google sempre vence para padronização de base
   if (distM <= 50) return { lat: googleLat, lng: googleLng, source: 'GOOGLE' }
   
@@ -407,17 +419,21 @@ function shouldMergeSameCanonicalAddress(a: InputRow, b: InputRow): boolean {
   return false
 }
 
-function getSurgicalQuery(address: string, city: string): string {
+function getSurgicalQuery(address: string, city: string, zip?: string): string {
   if (!address) return ''
   const expanded = expandAddress(address)
   const clean = expanded.replace(/ - .*/, '').trim()
   const match = clean.match(/(.*)[,\s]\s*(\d+[A-Za-z]?)$/)
+  
+  // Normalização do CEP para a busca
+  const cleanZip = zip ? `, CEP ${zip.replace(/\D/g, '')}` : ''
+
   if (match) {
     const logradouro = match[1].trim()
     const numero = match[2].trim()
-    return `${logradouro}, ${numero}, ${city}, SC, Brasil`
+    return `${logradouro}, ${numero}, ${city}, SC, Brasil${cleanZip}`
   }
-  return `${clean}, ${city}, SC, Brasil`
+  return `${clean}, ${city}, SC, Brasil${cleanZip}`
 }
 
 async function fetchCoords(address: string, city?: string, forceRefresh: boolean = false, lat?: number, lng?: number): Promise<{ 
@@ -705,7 +721,7 @@ export async function transformRows(
         stats.shopeeAuditCheckedCount++
         updatedRow['_shopee_audit_checked'] = true
         try {
-          const surgicalQuery = getSurgicalQuery(base, city)
+          const surgicalQuery = getSurgicalQuery(base, city, originalZip)
           
           // SCANNER DE DICAS: Se for SN, tenta achar número no complemento
           let currentBase = base
@@ -722,7 +738,7 @@ export async function transformRows(
           // Busca cirúrgica usa a base (ou a base com dica se for SN)
           let currentSurgicalQuery = surgicalQuery
           if (isSNCandidate && currentBase !== base) {
-             currentSurgicalQuery = getSurgicalQuery(currentBase, city)
+             currentSurgicalQuery = getSurgicalQuery(currentBase, city, originalZip)
           }
 
           const auditVariants = buildShopeeAuditVariants(currentSurgicalQuery, currentBase, city)
@@ -773,7 +789,9 @@ export async function transformRows(
             auditGeo?.lng || null,
             isStrictMatch,
             auditGeo?.location_type,
-            hasHint
+            hasHint,
+            originalZip,
+            auditGeo?.postal_code
           )
 
           best.lat = decision.lat
@@ -782,7 +800,7 @@ export async function transformRows(
 
         } catch (e) { stats.shopeeAuditNoReferenceCount++ }
       } else {
-        const surgicalQuery = getSurgicalQuery(base, city)
+        const surgicalQuery = getSurgicalQuery(base, city, originalZip)
         const cacheKey = normalizeCacheKey(surgicalQuery)
         const cached = geocodeCache.get(cacheKey)
         if (cached) {
