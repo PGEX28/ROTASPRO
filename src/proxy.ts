@@ -18,6 +18,11 @@ export default async function proxy(request: NextRequest) {
   const userAgent = request.headers.get('user-agent')?.toLowerCase() || ''
   const path = request.nextUrl.pathname
   
+  // REDIRECIONAMENTO DE ROTAS OBSOLETAS (STRIPE)
+  if (path.startsWith('/checkout/')) {
+    return NextResponse.redirect(new URL('/pricing', request.url))
+  }
+  
   // 1. FIREWALL ANTIBOT
   if (BLOCKED_AGENTS.some(agent => userAgent.includes(agent))) {
     return new NextResponse('Bloqueado por Política de Segurança', { status: 403 })
