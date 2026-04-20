@@ -8,7 +8,8 @@ import Link from 'next/link'
 import {
   Upload, FileSpreadsheet, X, Zap, AlertTriangle,
   CheckCircle2, Download, RotateCcw, Clock, CreditCard, TrendingUp,
-  MapPin, Navigation, LocateFixed, ShieldCheck, Search, Activity, Settings2, BrainCircuit
+  MapPin, Navigation, LocateFixed, ShieldCheck, Search, Activity, Settings2, BrainCircuit,
+  Smartphone
 } from 'lucide-react'
 import Navbar from '@/components/ui/Navbar'
 import InstallBanner from '@/components/ui/InstallBanner'
@@ -436,9 +437,20 @@ export default function DashboardPage() {
                     <span className="text-[10px] font-bold tracking-wider opacity-80 bg-black/20 px-2 py-0.5 rounded-full uppercase ml-1">1 crédito</span>
                   </button>
 
-                  <div className="flex flex-wrap justify-center gap-x-5 gap-y-1.5">
-                    {['⚡ Rápido', '📱 Mobile', '🔒 Privado', '📊 Excel'].map((f) => (
-                      <span key={f} className="text-[11px] text-[var(--text-muted)]">{f}</span>
+                  <div className="flex flex-wrap justify-center gap-x-4 gap-y-2 mt-2">
+                    {[
+                      { icon: Zap, label: 'Rápido', color: 'text-yellow-400' },
+                      { icon: Smartphone, label: 'Mobile', color: 'text-blue-400' },
+                      { icon: ShieldCheck, label: 'Privado', color: 'text-green-400' },
+                      { icon: FileSpreadsheet, label: 'Excel', color: 'text-emerald-400' }
+                    ].map((f) => (
+                      <div 
+                        key={f.label} 
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/[0.03] border border-white/[0.05] hover:bg-white/[0.08] hover:border-white/[0.1] hover:scale-105 transition-all cursor-default group"
+                      >
+                        <f.icon size={12} className={`${f.color} opacity-80 group-hover:opacity-100 transition-opacity`} />
+                        <span className="text-[10px] font-bold tracking-wider text-[var(--text-dim)] group-hover:text-[var(--text)] uppercase transition-colors">{f.label}</span>
+                      </div>
                     ))}
                   </div>
                 </div>
