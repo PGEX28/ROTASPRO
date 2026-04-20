@@ -63,9 +63,39 @@ export default async function proxy(request: NextRequest) {
   )
 
   // Dispara a renovação do token se necessário
-  await supabase.auth.getUser()
+  const { data: { user } } = await supabase.auth.getUser()
 
-  // 4. SECURITY HEADERS (ANTI-HACKER)
+  // DEBUG LOG (Monitoramento de redirecionamento)
+  console.log(`[PROXY] Path: ${path} | User: ${user ? user.email : 'GUEST'}`)
+
+  // 4. CONDITIONAL REDIRECTION (Guest vs Member Flow)
+  const isPublicRoute = path === '/' || path === '/login' || path === '/signup'
+  const isProtectedRoute = path.startsWith('/dashboard') || 
+                           path.startsWith('/circuitapp') || 
+                           path.startsWith('/history') ||
+                           path.startsWith('/admin')
+
+  // Redireciona membros logados no root/auth para o dashboard
+  if (user && isPublicRoute) {
+    const redirectResponse = NextResponse.redirect(new URL('/dashboard', request.url))
+    // Transfere cookies renovados para o redirecionamento
+    response.cookies.getAll().forEach(cookie => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
+    })
+    return redirectResponse
+  }
+
+  // Protege rotas internas (redireciona para login se não autenticado)
+  if (!user && isProtectedRoute) {
+    const redirectResponse = NextResponse.redirect(new URL('/login', request.url))
+    // Transfere cookies (limpeza ou renovação) para o redirecionamento
+    response.cookies.getAll().forEach(cookie => {
+      redirectResponse.cookies.set(cookie.name, cookie.value, cookie)
+    })
+    return redirectResponse
+  }
+
+  // 5. SECURITY HEADERS (ANTI-HACKER)
   response.headers.set('X-Frame-Options', 'DENY')
   response.headers.set('X-Content-Type-Options', 'nosniff')
   response.headers.set('Strict-Transport-Security', 'max-age=31536000; includeSubDomains; preload')
@@ -76,13 +106,19 @@ export default async function proxy(request: NextRequest) {
 }
 
 /**
- * CONFIGURAÇÃO DE ROTEAMENTO DO PROXY
+ * CONFIGURAÇÃO DO MATCHER (Essencial para o Next.js)
+ * Define as rotas onde este proxy deve atuar.
  */
 export const config = {
   matcher: [
     /*
-     * Aplica segurança e auth em todas as rotas exceto assets estáticos e favicon
+     * Match all request paths except for the ones starting with:
+     * - api (API routes)
+     * - _next/static (static files)
+     * - _next/image (image optimization files)
+     * - favicon.ico (favicon file)
      */
-    '/((?!_next/static|_next/image|favicon.ico).*)',
+    '/((?!api|_next/static|_next/image|favicon.ico).*)',
   ],
 }
+

@@ -1,18 +1,25 @@
 import type { Metadata } from 'next'
-import { Syne, DM_Sans } from 'next/font/google'
+import { Barlow, Barlow_Condensed, DM_Mono } from 'next/font/google'
 import './globals.css'
 
-const syne = Syne({
+const barlow = Barlow({
   subsets: ['latin'],
-  weight: ['700', '800'],
-  variable: '--font-syne',
+  weight: ['300', '400', '500', '600'],
+  variable: '--font-barlow',
   display: 'swap',
 })
 
-const dmSans = DM_Sans({
+const barlowCond = Barlow_Condensed({
   subsets: ['latin'],
-  weight: ['400', '500', '600'],
-  variable: '--font-dm-sans',
+  weight: ['400', '600', '700', '800', '900'],
+  variable: '--font-barlow-cond',
+  display: 'swap',
+})
+
+const dmMono = DM_Mono({
+  subsets: ['latin'],
+  weight: ['400', '500'],
+  variable: '--font-dm-mono',
   display: 'swap',
 })
 
@@ -33,12 +40,8 @@ export const viewport = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="pt-BR" className={`${syne.variable} ${dmSans.variable}`}>
-      <body className="bg-bg text-text font-dm-sans antialiased">
-        <div className="fixed inset-0 pointer-events-none z-0">
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_70%_35%_at_15%_5%,rgba(240,58,23,0.10)_0%,transparent_65%)]" />
-          <div className="absolute inset-0 bg-[radial-gradient(ellipse_50%_50%_at_85%_90%,rgba(240,58,23,0.06)_0%,transparent_65%)]" />
-        </div>
+    <html lang="pt-BR" className={`${barlow.variable} ${barlowCond.variable} ${dmMono.variable}`}>
+      <body suppressHydrationWarning className="bg-bg text-text font-barlow antialiased">
         <div className="relative z-10 min-h-screen flex flex-col">
           {children}
         </div>

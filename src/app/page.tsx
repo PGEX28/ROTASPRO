@@ -1,27 +1,53 @@
-import { redirect } from 'next/navigation'
-import { createServerClient } from '@supabase/ssr'
-import { cookies } from 'next/headers'
+import { LandingNav } from '@/components/landing/LandingNav'
+import { LandingHero } from '@/components/landing/LandingHero'
+import { 
+  LandingTrustBar, 
+  LandingProblem, 
+  LandingSolution, 
+  LandingSteps, 
+  LandingComparison, 
+  LandingFAQ, 
+  LandingFooter 
+} from '@/components/landing/LandingSections'
+import { LandingCTA } from '@/components/landing/LandingCTA'
+import { LandingBenefits, LandingDifferentiators } from '@/components/landing/LandingBenefits'
 
-export default async function RootPage() {
-  const cookieStore = await cookies()
+export default function RootPage() {
+  return (
+    <main className="min-h-screen bg-bg text-text selection:bg-orange selection:text-white">
+      {/* Navigation */}
+      <LandingNav />
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() {
-          return cookieStore.getAll()
-        },
-      },
-    }
+      {/* Hero Section */}
+      <LandingHero />
+
+      {/* Trust Band */}
+      <LandingTrustBar />
+
+      {/* Problem & Solution Flow */}
+      <LandingProblem />
+      <LandingSolution />
+
+      {/* How it works */}
+      <LandingSteps />
+
+      {/* Benefits Grid */}
+      <LandingBenefits />
+
+      {/* Before vs After */}
+      <LandingComparison />
+
+      {/* Differentiators */}
+      <LandingDifferentiators />
+
+      {/* Strong Final CTA */}
+      <LandingCTA />
+
+      {/* Questions */}
+      <LandingFAQ />
+
+      {/* Footer */}
+      <LandingFooter />
+    </main>
   )
-
-  const { data: { user } } = await supabase.auth.getUser()
-
-  if (user) {
-    redirect('/dashboard')
-  } else {
-    redirect('/login')
-  }
 }
